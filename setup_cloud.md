@@ -138,3 +138,29 @@ The bot is now trading automatically!
 - **Restart the Bot**: `sudo systemctl restart trader`
 
 *Note: Don't forget to change `trading.mode: live` in your `config.yaml` and restart the service once Groww approves your static IP!*
+
+## Step 9: Updating Code / Configuration
+
+When you make changes to the code or the config file on your Mac and want to deploy those updates to your server, follow this 3-step workflow:
+
+**1. Push updates from your Mac to GitHub**
+Open a terminal on your Mac, go into the `Stocks` folder, and run:
+```bash
+git add .
+git commit -m "Updated trading bot"
+git push origin main
+```
+
+**2. Pull the updates onto your AWS Server**
+Open your AWS server terminal (via EC2 Instance Connect), go into the `Stocks` folder, and download the latest code:
+```bash
+cd ~/Stocks
+git pull origin main
+```
+
+**3. Restart the Bot**
+Tell the background service to restart so it loads your new code/config:
+```bash
+sudo systemctl restart trader
+```
+Your bot will instantly start running on the newest version of the code.
