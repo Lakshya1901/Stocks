@@ -1,0 +1,15 @@
+growwapi>=1.0.0
+pyotp>=2.9.0
+pandas>=2.0.0
+numpy>=1.24.0
+ta>=0.11.0
+yfinance>=0.2.18
+flask>=3.0.0
+flask-socketio>=5.3.0
+gevent>=23.9.0
+gevent-websocket>=0.10.1
+pyyaml>=6.0
+python-dotenv>=1.0.0
+schedule>=1.2.0
+loguru>=0.7.0
+requests>=2.31.0
