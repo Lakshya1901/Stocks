@@ -42,7 +42,7 @@ The safest way to learn how the bot works is to run it locally on your machine i
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/yourusername/Stocks.git
+git clone https://github.com/Lakshya1901/Stocks.git
 cd Stocks
 python3 -m venv venv
 source venv/bin/activate
