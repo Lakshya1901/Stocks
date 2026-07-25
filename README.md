@@ -1,24 +1,49 @@
-# Day Trader Bot — Groww API
+<div align="center">
+  <h1>⚡ DayTrader Bot</h1>
+  <p><strong>Fully automated, real-time algorithmic day trading bot for the NSE (India).</strong></p>
+  
+  <p>
+    <a href="https://github.com/yourusername/Stocks/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+    <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.11+-green.svg" alt="Python Version"></a>
+    <a href="https://groww.in/"><img src="https://img.shields.io/badge/Broker-Groww-orange.svg" alt="Broker: Groww"></a>
+    <a href="#"><img src="https://img.shields.io/badge/Status-Active-success.svg" alt="Status"></a>
+  </p>
+</div>
 
-Automated intraday trading bot that scans the entire NSE universe (1800+ stocks), selects the best daily candidates, and executes trades using three complementary strategies — all monitored via a real-time dark-themed dashboard.
+---
 
-## Features
+**DayTrader Bot** is a headless, fully automated intraday trading engine that scans the entire National Stock Exchange (NSE) universe of 1800+ stocks every morning, selects the best candidates, and executes trades autonomously using an ensemble of three proven strategies.
 
-- **Full NSE Scanner** — Scans 1800+ stocks every morning, picks top 15 by composite momentum/volatility/volume score
-- **3 Trading Strategies** — VWAP Mean Reversion, Momentum Breakout, Opening Range Breakout
-- **Ensemble Signal Aggregator** — Weighted voting across strategies with conflict detection
-- **Risk Management** — Per-trade stop-loss, trailing stops, daily loss limits, sector exposure caps
-- **TOTP Authentication** — Automated daily login using TOTP (no manual API key refresh)
-- **Paper Trading Mode** — Simulate trades against live prices before going live
-- **Real-Time Dashboard** — Dark glassmorphism UI with live P&L, positions, signals, and controls
-- **SQLite Persistence** — All trades, signals, and daily summaries persisted for analysis
+It includes a beautiful **real-time glassmorphism dashboard** to monitor your P&L, live positions, and strategy signals.
 
-## Quick Start
+> [!WARNING]
+> **Disclaimer:** This software is for educational purposes only. Do not risk money which you are afraid to lose. USE THE SOFTWARE AT YOUR OWN RISK. The authors and contributors assume no responsibility for your trading results. Always test extensively in **Paper Trading Mode** before going live.
+
+---
+
+## 🌟 Key Features
+
+- **Full NSE Universe Scanner**: Scans 1800+ equities daily at 9:00 AM. Filters for liquidity, volatility (ATR), price action gaps, and momentum to select the top 50 stocks for the day.
+- **Ensemble Strategy Engine**: Runs three strategies concurrently:
+  - *VWAP Mean Reversion* (Range-bound markets)
+  - *Momentum Breakout* (Trend following)
+  - *Opening Range Breakout / ORB* (Morning volatility)
+- **Strict Risk Management**: Enforces maximum daily loss limits, per-trade position sizing, 2:1 reward/risk ratios, trailing stops, and sector exposure caps.
+- **Automated Authentication**: Uses `pyotp` for completely headless TOTP login. No manual API key refreshing required.
+- **Real-Time Dashboard**: Flask + WebSocket UI with live charts, position tables, and an emergency square-off button.
+- **SQLite Persistence**: Automatically logs all trades, strategy signals, and daily summaries to a local database for backtesting and review.
+
+---
+
+## 🚀 Quick Start (Local Paper Trading)
+
+The safest way to learn how the bot works is to run it locally on your machine in **Paper Trading mode**. It will simulate trades against real-time market data without risking a single penny.
 
 ### 1. Clone & Install
 
 ```bash
-cd /path/to/Stocks
+git clone https://github.com/yourusername/Stocks.git
+cd Stocks
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -31,108 +56,58 @@ cp .env.example .env
 ```
 
 Edit `.env` and add your Groww TOTP credentials:
+```env
+GROWW_TOTP_TOKEN=your_totp_token_here
+GROWW_TOTP_SECRET=your_totp_secret_here
 ```
-GROWW_TOTP_TOKEN=your_totp_token
-GROWW_TOTP_SECRET=your_totp_secret
-```
+*(To get these: Log into Groww → Profile → Settings → Trading APIs → Generate TOTP Token).*
 
-To get these:
-1. Log into [groww.in](https://groww.in)
-2. Go to **Profile → Settings → Trading APIs**
-3. Click dropdown next to "Generate API Key" → **Generate TOTP Token**
-4. Copy the TOTP Token and TOTP Secret
+### 3. Review Configuration
 
-### 3. Configure Settings
+Open `config.yaml`. Every parameter is heavily documented. Feel free to adjust the `capital`, `top_picks`, or strategy `weights`. **Ensure `mode` is set to `paper`.**
 
-Edit `config.yaml` to adjust:
-- **Capital** — Total capital allocation
-- **Risk parameters** — Stop-loss %, take-profit %, daily loss limit
-- **Scanner settings** — Volume thresholds, price range, number of picks
-- **Strategy weights** — How much each strategy influences the final signal
-
-### 4. Run
+### 4. Run the Bot
 
 ```bash
-# Paper trading (default)
 python -m src.main
-
-# Dashboard will be available at http://localhost:8080
 ```
+The bot will initialize. Open your web browser and go to `http://localhost:8080` to view the live dashboard!
 
-### 5. Cloud Deployment (Static IP)
+---
 
-See [setup_cloud.md](setup_cloud.md) for Oracle Cloud / AWS free-tier setup with static IP for Groww API whitelisting.
+## ☁️ Production Deployment (Live Trading)
 
-## Architecture
+Because the Groww API requires a **Static IP address** for order execution, you cannot run live trades from a standard home internet connection or a laptop that goes to sleep.
 
-```
-09:00  → Full NSE scan: 1800+ stocks → top 15
-09:15  → Subscribe to live feeds, start ORB data collection
-09:30  → All strategies active — main trading loop
-09:30-14:30 → Trade loop: tick → indicators → ensemble → risk → order
-14:30  → Stop new entries
-15:10  → Square off all positions
-15:30  → Daily report, persist to DB, sleep until next trading day
-```
+You must deploy the bot to a cloud server. 
 
-## Trading Strategies
+Please refer to our complete, step-by-step **[Production Deployment Guide (setup_cloud.md)](setup_cloud.md)**. It explains how to:
+1. Create a 100% Free Tier AWS EC2 server.
+2. Attach an Elastic IP (Static IP).
+3. Deploy the bot as a `systemd` background service that runs 24/7.
 
-| Strategy | Type | Best For | Weight |
-|----------|------|----------|--------|
-| VWAP Reversion | Mean Reversion | Range-bound markets | 35% |
-| Momentum Breakout | Trend Following | Trending markets | 35% |
-| Opening Range Breakout | Breakout | First 15-min range | 30% |
+---
 
-## Risk Rules
+## 🧠 How It Works (The Daily Lifecycle)
 
-- Max 1% capital risk per trade
-- 2:1 reward-to-risk ratio (2% TP, 1% SL)
-- Trailing stop activates at 1% profit
-- Daily loss limit: 2% of capital
-- Max 6 simultaneous positions
-- Max 3 positions per sector
-- No new entries after 2:30 PM
-- Force square-off at 3:10 PM
+If left running on a cloud server, the bot operates entirely on its own:
 
-## Dashboard
+1. **09:00 AM**: Runs the full NSE scan (1800+ stocks) and isolates the top 50 picks for the day based on momentum and volatility.
+2. **09:15 AM**: Market opens. Subscribes to live WebSocket feeds for the 50 picks. Collects data for the Opening Range Breakout strategy.
+3. **09:30 AM**: All strategies become fully active. The main trading loop runs every 3 seconds, evaluating indicators and ensemble signals.
+4. **02:30 PM**: Stops accepting *new* trade entries to prevent end-of-day volatility traps. Continues monitoring open positions for exit signals.
+5. **03:10 PM**: **Auto Square-Off**. Closes all remaining open positions to prevent the broker from force-closing them at market price.
+6. **03:30 PM**: Generates the End-of-Day report, saves it to the SQLite database, and goes to sleep until the next trading day.
 
-Access at `http://localhost:8080` (or `http://<cloud-ip>:8080`)
+---
 
-- **P&L Timeline** — Live chart tracking cumulative P&L
-- **Open Positions** — Real-time table with entry, current price, P&L, stop-loss
-- **Trade History** — Completed trades with realized P&L
-- **Scanner Results** — Today's stock picks with scores
-- **Signal Feed** — Live strategy signals with confidence scores
-- **Risk Status** — Progress bars for loss limit, position slots, capital usage
-- **Emergency Square-off** — One-click button to close all positions
+## 🤝 Contributing
 
-## Project Structure
+Contributions, issues, and feature requests are welcome! 
+Please check the [Contributing Guidelines](CONTRIBUTING.md) for details on how to get involved.
 
-```
-Stocks/
-├── config.yaml            # Configuration
-├── .env                   # API credentials (gitignored)
-├── requirements.txt       # Dependencies
-├── setup_cloud.md         # Cloud deployment guide
-├── src/
-│   ├── main.py            # Orchestrator
-│   ├── data/              # Instruments, market feed, historical data
-│   ├── scanner/           # Full NSE stock scanner
-│   ├── strategies/        # VWAP, Momentum, ORB, Ensemble
-│   ├── risk/              # Position sizing & risk management
-│   ├── execution/         # Order manager & portfolio tracker
-│   ├── storage/           # SQLite DB & logging
-│   └── dashboard/         # Flask + WebSocket UI
-├── data/                  # Instrument cache & trades DB
-└── logs/                  # Rotating log files
-```
+---
 
-## Going Live
+## 📜 License
 
-1. Run in paper mode for 3-5 full sessions
-2. Verify scanner picks, signal quality, and risk limits
-3. Set up cloud instance with static IP (see `setup_cloud.md`)
-4. Whitelist the IP in Groww
-5. Change `trading.mode` to `live` in `config.yaml`
-6. Start with minimum quantities (1 share) for 2-3 sessions
-7. Gradually increase capital allocation
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
