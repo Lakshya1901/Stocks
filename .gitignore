@@ -14,6 +14,8 @@ env/
 # Data files
 data/instruments/*.csv
 data/trades.db
+data/trades.db-shm
+data/trades.db-wal
 
 # Logs
 logs/
