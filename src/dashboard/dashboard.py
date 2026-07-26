@@ -129,6 +129,53 @@ def control():
     return jsonify({"status": "error", "message": "Unknown action"})
 
 
+@app.route("/api/config", methods=["GET", "POST"])
+def manage_config():
+    """Get or update bot configuration."""
+    import yaml
+    import os
+    config_path = os.path.join(os.path.dirname(__file__), "..", "..", "config.yaml")
+    
+    if request.method == "GET":
+        try:
+            with open(config_path, "r") as f:
+                config = yaml.safe_load(f)
+            return jsonify(config)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+            
+    elif request.method == "POST":
+        try:
+            new_settings = request.json
+            with open(config_path, "r") as f:
+                config = yaml.safe_load(f)
+                
+            # Update trading section
+            if "trading" not in config:
+                config["trading"] = {}
+            if "mode" in new_settings:
+                config["trading"]["mode"] = new_settings["mode"]
+            if "capital" in new_settings:
+                config["trading"]["capital"] = float(new_settings["capital"])
+            if "max_per_trade" in new_settings:
+                config["trading"]["max_per_trade"] = float(new_settings["max_per_trade"])
+            if "max_daily_loss" in new_settings:
+                config["trading"]["max_daily_loss"] = float(new_settings["max_daily_loss"])
+                
+            # Save back to file
+            with open(config_path, "w") as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+                
+            # Hot reload RiskManager
+            if _engine and _engine.get("risk_manager"):
+                _engine["risk_manager"].update_config(config["trading"])
+                
+            return jsonify({"status": "success", "message": "Configuration updated"})
+        except Exception as e:
+            logger.error("Failed to update config: {}", e)
+            return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/export_trades")
 def export_trades():
     """Export historical trades as Excel."""

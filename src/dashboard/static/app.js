@@ -391,3 +391,78 @@ if (exportBtn) {
     });
 }
 
+// ============ Settings Modal ============
+const settingsBtn = document.getElementById('settings-btn');
+const settingsModal = document.getElementById('settings-modal');
+const settingsCancel = document.getElementById('settings-cancel');
+const settingsSave = document.getElementById('settings-save');
+const settingsAlert = document.getElementById('settings-alert');
+
+if (settingsBtn && settingsModal) {
+    // Open modal and fetch config
+    settingsBtn.addEventListener('click', async () => {
+        try {
+            const res = await fetch('/api/config');
+            if (res.ok) {
+                const config = await res.json();
+                const trading = config.trading || {};
+                document.getElementById('config-mode').value = trading.mode || 'paper';
+                document.getElementById('config-capital').value = trading.capital || 20000;
+                document.getElementById('config-max-trade').value = trading.max_per_trade || 4000;
+                document.getElementById('config-max-loss').value = trading.max_daily_loss || 400;
+                
+                settingsAlert.style.display = 'none';
+                settingsModal.style.display = 'flex';
+            }
+        } catch (e) {
+            alert('Failed to load settings');
+        }
+    });
+
+    // Handle mode change warning
+    document.getElementById('config-mode').addEventListener('change', (e) => {
+        settingsAlert.style.display = 'block';
+    });
+
+    // Close modal
+    settingsCancel.addEventListener('click', () => {
+        settingsModal.style.display = 'none';
+    });
+
+    // Save config
+    settingsSave.addEventListener('click', async () => {
+        const mode = document.getElementById('config-mode').value;
+        const capital = parseFloat(document.getElementById('config-capital').value);
+        const max_per_trade = parseFloat(document.getElementById('config-max-trade').value);
+        const max_daily_loss = parseFloat(document.getElementById('config-max-loss').value);
+        
+        try {
+            const res = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode,
+                    capital,
+                    max_per_trade,
+                    max_daily_loss
+                })
+            });
+            
+            const data = await res.json();
+            if (res.ok) {
+                settingsModal.style.display = 'none';
+                // Show brief success alert
+                if (settingsAlert.style.display === 'block') {
+                    alert('Settings saved! Please restart the bot using `sudo systemctl restart trader` for the trading mode change to take effect.');
+                }
+                // Update badge if mode changed visually (though restart is required)
+                document.getElementById('mode-badge').textContent = mode.toUpperCase();
+                document.getElementById('mode-badge').className = `badge badge-${mode}`;
+            } else {
+                alert('Error saving settings: ' + data.error);
+            }
+        } catch (e) {
+            alert('Failed to save settings');
+        }
+    });
+}

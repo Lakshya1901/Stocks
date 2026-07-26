@@ -40,6 +40,23 @@ class RiskManager:
         self._sector_positions = {}  # sector -> count
         self._halted = False
 
+    def update_config(self, trading_cfg: dict):
+        """Hot-reload capital constraints dynamically."""
+        self._capital = trading_cfg.get("capital", self._capital)
+        self._max_per_trade = trading_cfg.get("max_per_trade", self._max_per_trade)
+        self._max_open_positions = trading_cfg.get("max_open_positions", self._max_open_positions)
+        self._max_daily_loss = trading_cfg.get("max_daily_loss", self._max_daily_loss)
+        
+        # Check if we should unhalt due to a max_daily_loss bump
+        if self._halted and self._daily_pnl > -self._max_daily_loss:
+            self._halted = False
+            logger.info("Risk manager unhalted due to increased daily loss limit")
+            
+        logger.info(
+            "Risk manager config hot-reloaded: capital={}, max_trade={}, max_loss={}",
+            self._capital, self._max_per_trade, self._max_daily_loss
+        )
+
     def reset_daily(self):
         """Reset daily counters at the start of each day."""
         self._daily_pnl = 0.0
