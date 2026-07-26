@@ -158,7 +158,14 @@ cd ~/Stocks
 git pull origin main
 ```
 
-**3. Restart the Bot**
+**3. Update Dependencies**
+If you added new packages to `requirements.txt`, install them:
+```bash
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+**4. Restart the Bot**
 Tell the background service to restart so it loads your new code/config:
 ```bash
 sudo systemctl restart trader
