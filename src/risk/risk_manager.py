@@ -259,11 +259,6 @@ class RiskManager:
 
         return False, ""
 
-    def should_square_off_all(self) -> bool:
-        """Check if it's time for end-of-day square off (3:10 PM)."""
-        from datetime import time as dtime
-        now = datetime.now().time()
-        return now >= dtime(15, 10)
 
     def _get_available_capital(self) -> float:
         """Calculate available capital after accounting for open positions."""

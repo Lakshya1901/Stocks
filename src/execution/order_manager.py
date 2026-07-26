@@ -272,43 +272,6 @@ class OrderManager:
         """Get order by ID."""
         return self._orders.get(order_id)
 
-    def get_all_orders(self) -> list[Order]:
-        """Get all orders."""
-        return list(self._orders.values())
-
-    def get_todays_orders(self) -> list[Order]:
-        """Get today's orders."""
-        today = datetime.now().date()
-        return [o for o in self._orders.values() if o.placed_at.date() == today]
-
-    def sync_order_status(self, order_id: str) -> OrderStatus:
-        """Sync order status with Groww API (live mode only)."""
-        order = self._orders.get(order_id)
-        if order is None or order.paper:
-            return order.status if order else OrderStatus.FAILED
-
-        if self._groww is None:
-            return order.status
-
-        try:
-            orders = self._groww.get_order_list(timeout=5)
-            for groww_order in (orders or []):
-                if str(groww_order.get("orderId", "")) == order.groww_order_id:
-                    status = groww_order.get("status", "").upper()
-                    if "COMPLETE" in status or "EXECUTED" in status:
-                        order.status = OrderStatus.EXECUTED
-                        order.executed_price = float(groww_order.get("averagePrice", order.price))
-                        order.executed_quantity = int(groww_order.get("filledQuantity", order.quantity))
-                        order.executed_at = datetime.now()
-                    elif "CANCEL" in status:
-                        order.status = OrderStatus.CANCELLED
-                    elif "REJECT" in status:
-                        order.status = OrderStatus.REJECTED
-                    break
-        except Exception as e:
-            logger.error("Failed to sync order status for {}: {}", order_id, e)
-
-        return order.status
 
     @property
     def is_live(self) -> bool:

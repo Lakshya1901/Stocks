@@ -213,12 +213,6 @@ class Database:
         )
         return [dict(row) for row in cursor.fetchall()]
 
-    def get_recent_signals(self, limit: int = 100) -> list[dict]:
-        """Get recent signals."""
-        cursor = self._conn.execute(
-            "SELECT * FROM signals ORDER BY timestamp DESC LIMIT ?", (limit,)
-        )
-        return [dict(row) for row in cursor.fetchall()]
 
     def close(self):
         """Close database connection."""

@@ -149,13 +149,6 @@ class MarketFeed:
             }
         return None
 
-    def get_latest_tick(self, symbol: str) -> Tick | None:
-        """Get the most recent Tick object for a symbol."""
-        return self._latest_ticks.get(symbol.upper())
-
-    def get_tick_buffer(self, symbol: str) -> list:
-        """Get the tick history buffer for a symbol."""
-        return list(self._tick_buffers.get(symbol.upper(), []))
 
     def _update_tick(self, symbol: str, ltp: float = 0, **kwargs):
         """Update the tick buffer and notify listeners."""
@@ -189,14 +182,6 @@ class MarketFeed:
         """Register a callback for tick updates. callback(tick: Tick)"""
         self._listeners.append(callback)
 
-    def poll_prices(self, symbols: list = None):
-        """
-        Manually poll prices for subscribed symbols.
-        Useful as a fallback when WebSocket isn't available.
-        """
-        targets = symbols or list(self._subscribed_symbols)
-        for symbol in targets:
-            self.get_ltp(symbol)
 
     def is_connected(self) -> bool:
         return self._connected

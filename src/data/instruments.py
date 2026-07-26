@@ -108,26 +108,6 @@ class InstrumentCatalog:
         """Look up instrument details by exchange token."""
         return self._token_map.get(str(token))
 
-    def get_symbols_in_price_range(self, min_price: float = 0, max_price: float = 999999) -> list:
-        """
-        Filter symbols by last known price range.
-        Note: This uses CSV data which may not have live prices.
-        The scanner will further filter using live/recent prices.
-        """
-        # The instrument CSV may not have price data — return all if so
-        price_col = None
-        for col in ["last_price", "close_price", "ltp"]:
-            if col in self._instruments_df.columns:
-                price_col = col
-                break
-
-        if price_col is None:
-            return self.get_all_symbols()
-
-        mask = (self._instruments_df[price_col] >= min_price) & (
-            self._instruments_df[price_col] <= max_price
-        )
-        return self._instruments_df[mask]["trading_symbol"].str.upper().tolist()
 
     def classify_price_tier(self, price: float) -> str:
         """Classify a stock into a price tier."""

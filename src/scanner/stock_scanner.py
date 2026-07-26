@@ -342,34 +342,3 @@ class StockScanner:
 
         return picks
 
-    def get_capital_allocation(self, picks: list[dict], total_capital: float) -> dict:
-        """
-        Calculate capital allocation per stock based on price tier.
-
-        Returns:
-            Dict of symbol -> allocated capital amount
-        """
-        # Tier allocation weights
-        tier_weights = {
-            "penny": 0.15,
-            "small": 0.30,
-            "mid": 0.35,
-            "large": 0.20,
-        }
-
-        # Count picks per tier
-        tier_counts = {}
-        for pick in picks:
-            tier = pick.get("tier", "mid")
-            tier_counts[tier] = tier_counts.get(tier, 0) + 1
-
-        # Calculate per-stock allocation
-        allocations = {}
-        for pick in picks:
-            tier = pick.get("tier", "mid")
-            tier_capital = total_capital * tier_weights.get(tier, 0.25)
-            count = tier_counts.get(tier, 1)
-            per_stock = tier_capital / count
-            allocations[pick["symbol"]] = per_stock
-
-        return allocations

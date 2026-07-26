@@ -381,3 +381,13 @@ fetchSignals();
 setInterval(fetchPortfolio, 5000);
 setInterval(fetchMetrics, 10000);
 setInterval(fetchScanner, 60000);
+
+// ============ Export Button ============
+const exportBtn = document.getElementById('sim-btn');
+
+if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+        window.location.href = `/api/export_trades`;
+    });
+}
+
