@@ -12,7 +12,6 @@ Logic:
 
 import pandas as pd
 import ta as ta_lib
-from loguru import logger
 
 from src.strategies.base_strategy import BaseStrategy, Signal, SignalType
 
@@ -45,7 +44,8 @@ class VWAPReversionStrategy(BaseStrategy):
                 pass
 
         # RSI
-        rsi_indicator = ta_lib.momentum.RSIIndicator(close=df["close"], window=self._rsi_length)
+        rsi_indicator = ta_lib.momentum.RSIIndicator(
+            close=df["close"], window=self._rsi_length)
         df["rsi"] = rsi_indicator.rsi()
 
         # Bollinger Bands
@@ -99,7 +99,8 @@ class VWAPReversionStrategy(BaseStrategy):
 
         # --- BUY Signal: Price below VWAP + RSI oversold + near lower BB ---
         if vwap_dev < -self._vwap_deviation and rsi < self._rsi_oversold and bb_position < 0.2:
-            confidence = self._calculate_buy_confidence(vwap_dev, rsi, bb_position)
+            confidence = self._calculate_buy_confidence(
+                vwap_dev, rsi, bb_position)
             stop_loss = price * 0.99  # 1% below entry
             take_profit = vwap  # Target: return to VWAP
 
@@ -117,7 +118,8 @@ class VWAPReversionStrategy(BaseStrategy):
 
         # --- SELL Signal: Price above VWAP + RSI overbought + near upper BB ---
         if vwap_dev > self._vwap_deviation and rsi > self._rsi_overbought and bb_position > 0.8:
-            confidence = self._calculate_sell_confidence(vwap_dev, rsi, bb_position)
+            confidence = self._calculate_sell_confidence(
+                vwap_dev, rsi, bb_position)
             stop_loss = price * 1.01  # 1% above entry
             take_profit = vwap
 
@@ -143,7 +145,8 @@ class VWAPReversionStrategy(BaseStrategy):
         confidence += min(abs(vwap_dev) / 0.02, 0.35)
 
         # Lower RSI = higher confidence
-        confidence += max(0, (self._rsi_oversold - rsi) / self._rsi_oversold) * 0.35
+        confidence += max(0, (self._rsi_oversold - rsi) /
+                          self._rsi_oversold) * 0.35
 
         # Closer to lower BB = higher confidence
         confidence += max(0, (0.2 - bb_pos) / 0.2) * 0.30
@@ -155,7 +158,8 @@ class VWAPReversionStrategy(BaseStrategy):
         confidence = 0.0
 
         confidence += min(abs(vwap_dev) / 0.02, 0.35)
-        confidence += max(0, (rsi - self._rsi_overbought) / (100 - self._rsi_overbought)) * 0.35
+        confidence += max(0, (rsi - self._rsi_overbought) /
+                          (100 - self._rsi_overbought)) * 0.35
         confidence += max(0, (bb_pos - 0.8) / 0.2) * 0.30
 
         return min(confidence, 1.0)

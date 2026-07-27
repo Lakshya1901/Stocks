@@ -17,6 +17,22 @@ Usage:
   python -m src.main
 """
 
+from src.dashboard.dashboard import set_engine, emit_tick, emit_trade, emit_signal, emit_portfolio, start_dashboard
+from src.strategies.base_strategy import SignalType
+from src.storage.database import Database
+from src.execution.portfolio import Portfolio
+from src.execution.order_manager import OrderManager
+from src.risk.risk_manager import RiskManager
+from src.strategies.strategy_ensemble import StrategyEnsemble
+from src.strategies.ttm_squeeze import TTMSqueezeStrategy
+from src.strategies.opening_range_breakout import OpeningRangeBreakoutStrategy
+from src.strategies.momentum_breakout import MomentumBreakoutStrategy
+from src.strategies.vwap_reversion import VWAPReversionStrategy
+from src.scanner.stock_scanner import StockScanner
+from src.data.data_fetcher import DataFetcher
+from src.data.market_feed import MarketFeed
+from src.data.instruments import InstrumentCatalog
+from src.storage.logger import setup_logging
 import os
 import sys
 import time
@@ -31,24 +47,9 @@ from loguru import logger
 load_dotenv()
 
 # Setup logging first
-from src.storage.logger import setup_logging
 setup_logging("INFO")
 
 # Import all components
-from src.data.instruments import InstrumentCatalog
-from src.data.market_feed import MarketFeed
-from src.data.data_fetcher import DataFetcher
-from src.scanner.stock_scanner import StockScanner
-from src.strategies.vwap_reversion import VWAPReversionStrategy
-from src.strategies.momentum_breakout import MomentumBreakoutStrategy
-from src.strategies.opening_range_breakout import OpeningRangeBreakoutStrategy
-from src.strategies.strategy_ensemble import StrategyEnsemble
-from src.risk.risk_manager import RiskManager
-from src.execution.order_manager import OrderManager
-from src.execution.portfolio import Portfolio
-from src.storage.database import Database
-from src.strategies.base_strategy import SignalType
-from src.dashboard.dashboard import set_engine, emit_tick, emit_trade, emit_signal, emit_portfolio, start_dashboard
 
 
 class TradingBot:
@@ -70,22 +71,35 @@ class TradingBot:
         self._portfolio = Portfolio()
         self._database = Database()
 
+        # Restore open positions from DB
+        restored = self._database.get_open_positions()
+        for pos_data in restored:
+            self._portfolio.restore_position(pos_data)
+
         # Strategies
         strat_cfg = self._config.get("strategies", {})
         self._strategies = []
 
         if strat_cfg.get("vwap_reversion", {}).get("enabled", True):
-            self._strategies.append(VWAPReversionStrategy(strat_cfg.get("vwap_reversion", {})))
+            self._strategies.append(VWAPReversionStrategy(
+                strat_cfg.get("vwap_reversion", {})))
         if strat_cfg.get("momentum_breakout", {}).get("enabled", True):
-            self._strategies.append(MomentumBreakoutStrategy(strat_cfg.get("momentum_breakout", {})))
+            self._strategies.append(MomentumBreakoutStrategy(
+                strat_cfg.get("momentum_breakout", {})))
         if strat_cfg.get("opening_range_breakout", {}).get("enabled", True):
-            self._strategies.append(OpeningRangeBreakoutStrategy(strat_cfg.get("opening_range_breakout", {})))
+            self._strategies.append(OpeningRangeBreakoutStrategy(
+                strat_cfg.get("opening_range_breakout", {})))
+        if strat_cfg.get("ttm_squeeze", {}).get("enabled", True):
+            self._strategies.append(TTMSqueezeStrategy(
+                strat_cfg.get("ttm_squeeze", {})))
 
         self._ensemble = StrategyEnsemble(self._strategies, threshold=0.6)
 
         # Today's trading state
         self._todays_picks = []
+        self._picks_lock = threading.Lock()
         self._orb_ready = False
+        self._background_scanner_running = False
 
         # Dashboard state reference
         self._engine_state = {
@@ -104,7 +118,8 @@ class TradingBot:
 
     def _load_config(self) -> dict:
         """Load configuration from config.yaml."""
-        config_path = os.path.join(os.path.dirname(__file__), "..", "config.yaml")
+        config_path = os.path.join(
+            os.path.dirname(__file__), "..", "config.yaml")
         try:
             with open(config_path, "r") as f:
                 config = yaml.safe_load(f)
@@ -118,8 +133,10 @@ class TradingBot:
         """Start the trading bot."""
         logger.info("=" * 60)
         logger.info("  DAY TRADER BOT STARTING")
-        logger.info("  Mode: {}", self._config.get("trading", {}).get("mode", "paper").upper())
-        logger.info("  Capital: {}", self._config.get("trading", {}).get("capital", 20000))
+        logger.info("  Mode: {}", self._config.get(
+            "trading", {}).get("mode", "paper").upper())
+        logger.info("  Capital: {}", self._config.get(
+            "trading", {}).get("capital", 20000))
         logger.info("=" * 60)
 
         self._running = True
@@ -138,7 +155,8 @@ class TradingBot:
         self._instruments.load()
 
         # Step 3: Initialize scanner
-        self._scanner = StockScanner(self._config, self._instruments, self._data_fetcher)
+        self._scanner = StockScanner(
+            self._config, self._instruments, self._data_fetcher)
 
         # Step 4: Start dashboard in background thread
         dashboard_config = self._config.get("dashboard", {})
@@ -152,7 +170,8 @@ class TradingBot:
             daemon=True,
         )
         dashboard_thread.start()
-        logger.info("Dashboard started on port {}", dashboard_config.get("port", 8080))
+        logger.info("Dashboard started on port {}",
+                    dashboard_config.get("port", 8080))
 
         # Step 5: Run the main trading loop
         try:
@@ -181,9 +200,11 @@ class TradingBot:
             if access_token:
                 self._market_feed = MarketFeed(access_token)
                 self._market_feed.connect()
-            logger.info("Authentication successful — {} mode active", self._engine_state["mode"])
+            logger.info("Authentication successful — {} mode active",
+                        self._engine_state["mode"])
         else:
-            logger.warning("Authentication failed — falling back to paper mode")
+            logger.warning(
+                "Authentication failed — falling back to paper mode")
 
     def _run_trading_day(self):
         """Main trading day lifecycle."""
@@ -193,20 +214,39 @@ class TradingBot:
 
             # Check if it's a weekday
             if now.weekday() >= 5:  # Saturday or Sunday
-                logger.info("Weekend — market closed. Sleeping until Monday...")
+                logger.info(
+                    "Weekend — market closed. Sleeping until Monday...")
                 self._sleep_until_next_trading_day()
                 continue
 
-            # ---- Pre-Market Phase (09:00 - 09:15) ----
+            # ---- Check if scan is needed (anytime before 14:30) ----
+            if current_time >= dtime(9, 0) and current_time < dtime(14, 30):
+                if not getattr(self, '_scanned_today', False):
+                    # Check if we already scanned today (e.g. app was restarted)
+                    existing_scan = self._database.get_scanner_results(
+                        date.today().isoformat())
+                    if existing_scan:
+                        logger.info(
+                            "Found today's scan results in database! Skipping scan.")
+                        self._todays_picks = existing_scan
+                        self._engine_state["scanner_results"] = self._todays_picks
+                        self._scanned_today = True
+                    else:
+                        logger.info("Running required daily scan...")
+                        self._pre_market_scan()
+                        self._scanned_today = True
+
+            # ---- Pre-Market (09:00 - 09:15) ----
             if dtime(9, 0) <= current_time < dtime(9, 15):
-                if not self._todays_picks:
-                    self._pre_market_scan()
                 time.sleep(10)
                 continue
 
-            # ---- Market Open (09:15 - 09:30): ORB collection phase ----
+            # ---- Morning Trade (09:15 - 09:30) ----
             if dtime(9, 15) <= current_time < dtime(9, 30):
-                self._engine_state["market_open"] = True
+                if not getattr(self, '_collecting_orb_logged', False):
+                    logger.info(
+                        "Collecting Opening Range data (9:15 - 9:30)...")
+                    self._collecting_orb_logged = True
 
                 if not self._orb_ready:
                     # Subscribe to feeds
@@ -214,8 +254,6 @@ class TradingBot:
                         symbols = [p["symbol"] for p in self._todays_picks]
                         self._market_feed.subscribe(symbols)
 
-                    # Collect ORB data (first 15 min)
-                    logger.info("Collecting Opening Range data (9:15 - 9:30)...")
                 time.sleep(5)
                 continue
 
@@ -225,7 +263,16 @@ class TradingBot:
                 if not self._orb_ready:
                     self._setup_orb_ranges()
                     self._orb_ready = True
-                    logger.info("All strategies now active — entering main trading loop")
+                    logger.info(
+                        "All strategies now active — entering main trading loop")
+
+                    # Start continuous background scanner
+                    self._background_scanner_running = True
+                    threading.Thread(
+                        target=self._continuous_scanner_loop,
+                        name="ScannerThread",
+                        daemon=True
+                    ).start()
 
                 # Check emergency square-off
                 if self._engine_state.get("emergency_squareoff"):
@@ -283,10 +330,48 @@ class TradingBot:
             if not self._todays_picks:
                 logger.warning("Scanner found no suitable stocks today!")
             else:
-                logger.info("Scanner selected {} stocks for today", len(self._todays_picks))
+                logger.info("Scanner selected {} stocks for today",
+                            len(self._todays_picks))
 
         except Exception as e:
-            logger.error("Pre-market scan failed: {}", e)
+            logger.error("Error during pre-market scan: {}", e)
+
+    def _continuous_scanner_loop(self):
+        """Runs continuously in the background to update Top Gainers/Losers."""
+        logger.info("[Background] Continuous intraday scanner started")
+        while not self._shutdown and self._background_scanner_running:
+            try:
+                # Wait 30 minutes before next scan (using small sleeps for fast shutdown)
+                for _ in range(1800):
+                    if self._shutdown or not self._background_scanner_running:
+                        return
+                    time.sleep(1)
+
+                logger.info(
+                    "[Background] Running intraday scan for fresh Top Gainers...")
+                fresh_picks = self._scanner.scan()
+
+                if fresh_picks:
+                    with self._picks_lock:
+                        self._todays_picks = fresh_picks
+                        self._engine_state["scanner_results"] = self._todays_picks
+
+                    # Update DB cache
+                    self._database.record_scanner_results(
+                        date.today().isoformat(),
+                        [{**p, "selected": True} for p in fresh_picks],
+                    )
+                    logger.info(
+                        "[Background] Successfully refreshed Top 100 stock list!")
+
+                    # Ensure new picks are subscribed in Market Feed
+                    if self._market_feed:
+                        symbols = [p["symbol"] for p in fresh_picks]
+                        self._market_feed.subscribe(symbols)
+
+            except Exception as e:
+                logger.error("[Background] Error during intraday scan: {}", e)
+                time.sleep(60)
 
     def _setup_orb_ranges(self):
         """Set up Opening Range Breakout ranges from first 15 min of data."""
@@ -301,9 +386,13 @@ class TradingBot:
 
         orb_strategy.reset_daily()
 
-        for pick in self._todays_picks:
+        with self._picks_lock:
+            current_picks = list(self._todays_picks)
+
+        for pick in current_picks:
             try:
-                df = self._data_fetcher.get_intraday_data(pick["symbol"], interval="1m")
+                df = self._data_fetcher.get_intraday_data(
+                    pick["symbol"], interval="1m")
                 if not df.empty:
                     orb_strategy.detect_opening_range(df, pick["symbol"])
             except Exception as e:
@@ -311,7 +400,10 @@ class TradingBot:
 
     def _trading_iteration(self):
         """Single iteration of the main trading loop."""
-        for pick in self._todays_picks:
+        with self._picks_lock:
+            current_picks = list(self._todays_picks)
+
+        for pick in current_picks:
             symbol = pick["symbol"]
 
             try:
@@ -323,13 +415,15 @@ class TradingBot:
                 # 2. Check existing position exits
                 if self._portfolio.has_position(symbol):
                     self._portfolio.update_price(symbol, current_price)
-                    should_exit, reason = self._risk_manager.check_position_exits(symbol, current_price)
+                    should_exit, reason = self._risk_manager.check_position_exits(
+                        symbol, current_price)
                     if should_exit:
                         self._close_position(symbol, current_price, reason)
                     continue  # Skip new signals for symbols we already hold
 
                 # 3. Get intraday data for indicators
-                df = self._data_fetcher.get_intraday_data(symbol, interval="5m")
+                df = self._data_fetcher.get_intraday_data(
+                    symbol, interval="5m")
                 if df.empty or len(df) < 30:
                     continue
 
@@ -340,7 +434,8 @@ class TradingBot:
                         strategy_df = strategy.calculate_indicators(df.copy())
                         dataframes[strategy.name] = strategy_df
                     except Exception as e:
-                        logger.debug("Indicator calc failed for {} / {}: {}", symbol, strategy.name, e)
+                        logger.debug(
+                            "Indicator calc failed for {} / {}: {}", symbol, strategy.name, e)
 
                 # 5. Run ensemble
                 signal = self._ensemble.evaluate(dataframes, symbol)
@@ -369,13 +464,16 @@ class TradingBot:
 
                 # 8. Check risk rules
                 sector = pick.get("sector", "other")
-                can_trade, deny_reason = self._risk_manager.can_trade(signal, sector)
+                can_trade, deny_reason = self._risk_manager.can_trade(
+                    signal, sector)
                 if not can_trade:
-                    logger.debug("Trade blocked for {}: {}", symbol, deny_reason)
+                    logger.debug("Trade blocked for {}: {}",
+                                 symbol, deny_reason)
                     continue
 
                 # 9. Calculate position size
-                quantity = self._risk_manager.calculate_position_size(signal, current_price)
+                quantity = self._risk_manager.calculate_position_size(
+                    signal, current_price)
                 if quantity <= 0:
                     continue
 
@@ -400,7 +498,8 @@ class TradingBot:
                     continue
 
                 self._portfolio.update_price(symbol, current_price)
-                should_exit, reason = self._risk_manager.check_position_exits(symbol, current_price)
+                should_exit, reason = self._risk_manager.check_position_exits(
+                    symbol, current_price)
                 if should_exit:
                     self._close_position(symbol, current_price, reason)
             except Exception as e:
@@ -419,8 +518,10 @@ class TradingBot:
 
     def _execute_trade(self, signal, quantity: int, price: float, sector: str):
         """Execute a trade based on a signal."""
-        stop_loss = signal.stop_loss or self._risk_manager.calculate_stop_loss(price, signal.signal_type)
-        take_profit = signal.take_profit or self._risk_manager.calculate_take_profit(price, signal.signal_type)
+        stop_loss = signal.stop_loss or self._risk_manager.calculate_stop_loss(
+            price, signal.signal_type)
+        take_profit = signal.take_profit or self._risk_manager.calculate_take_profit(
+            price, signal.signal_type)
 
         order = self._order_manager.place_order(
             symbol=signal.symbol,
@@ -441,7 +542,7 @@ class TradingBot:
             )
 
             # Register with portfolio
-            self._portfolio.open_position(
+            pos = self._portfolio.open_position(
                 symbol=signal.symbol,
                 signal_type=signal.signal_type,
                 quantity=quantity,
@@ -452,6 +553,11 @@ class TradingBot:
                 sector=sector,
                 order_id=order.order_id,
             )
+
+            # Persist to database
+            pos_dict = pos.__dict__.copy()
+            pos_dict["entry_time"] = pos.entry_time.isoformat()
+            self._database.save_open_position(pos_dict)
 
             # Emit to dashboard
             emit_trade({
@@ -506,6 +612,7 @@ class TradingBot:
                 "exit_time": datetime.now().isoformat(),
                 "paper": self._order_manager.is_paper,
             })
+            self._database.delete_open_position(symbol)
 
         # Emit to dashboard
         emit_trade({
@@ -516,7 +623,8 @@ class TradingBot:
             "reason": reason,
         })
 
-        logger.info("POSITION CLOSED: {} @ {:.2f} | PnL={:.2f} | Reason: {}", symbol, exit_price, pnl, reason)
+        logger.info("POSITION CLOSED: {} @ {:.2f} | PnL={:.2f} | Reason: {}",
+                    symbol, exit_price, pnl, reason)
 
     def _square_off_all(self, reason: str = "END_OF_DAY"):
         """Close all open positions."""
@@ -524,7 +632,8 @@ class TradingBot:
         if not positions:
             return
 
-        logger.warning("=== SQUARE OFF ALL ({}) — {} positions ===", reason, len(positions))
+        logger.warning(
+            "=== SQUARE OFF ALL ({}) — {} positions ===", reason, len(positions))
 
         for symbol in list(positions.keys()):
             try:
@@ -532,7 +641,8 @@ class TradingBot:
                 if price:
                     self._close_position(symbol, price, reason)
                 else:
-                    logger.error("Cannot square off {} — no price available", symbol)
+                    logger.error(
+                        "Cannot square off {} — no price available", symbol)
             except Exception as e:
                 logger.error("Square-off error for {}: {}", symbol, e)
 
@@ -546,10 +656,11 @@ class TradingBot:
         logger.info("  Total P&L: {:.2f}", metrics.get("total_pnl", 0))
         logger.info("  Realized: {:.2f}", metrics.get("realized_pnl", 0))
         logger.info("  Trades: {} (W:{} L:{})", metrics.get("total_trades", 0),
-                     metrics.get("winning_trades", 0), metrics.get("losing_trades", 0))
+                    metrics.get("winning_trades", 0), metrics.get("losing_trades", 0))
         logger.info("  Win Rate: {:.1f}%", metrics.get("win_rate", 0))
         logger.info("  Profit Factor: {:.2f}", metrics.get("profit_factor", 0))
-        logger.info("  Avg Holding: {:.0f} min", metrics.get("avg_holding_mins", 0))
+        logger.info("  Avg Holding: {:.0f} min",
+                    metrics.get("avg_holding_mins", 0))
         logger.info("=" * 60)
 
         # Save to database
@@ -571,6 +682,8 @@ class TradingBot:
         """Reset all daily state."""
         self._todays_picks = []
         self._orb_ready = False
+        self._scanned_today = False
+        self._collecting_orb_logged = False
         self._risk_manager.reset_daily()
         self._portfolio.reset_daily()
         self._data_fetcher.clear_cache()
@@ -590,21 +703,22 @@ class TradingBot:
     def _sleep_until_next_trading_day(self):
         """Sleep until the next market day at 08:55 AM."""
         now = datetime.now()
-        
+
         # Target 08:55 AM today
         next_day = now.replace(hour=8, minute=55, second=0, microsecond=0)
-        
+
         # If we're already past 08:55 AM today, the next trading session starts tomorrow
         if now >= next_day:
             next_day += __import__("datetime").timedelta(days=1)
-            
+
         # If the target day lands on a weekend, push it forward to Monday
         while next_day.weekday() >= 5:  # 5=Saturday, 6=Sunday
             next_day += __import__("datetime").timedelta(days=1)
 
         sleep_seconds = (next_day - now).total_seconds()
         if sleep_seconds > 0:
-            logger.info("Sleeping for {:.2f} hours until {}", sleep_seconds / 3600, next_day)
+            logger.info(
+                "Sleeping for {:.2f} hours until {}", sleep_seconds / 3600, next_day)
             # Sleep in chunks to allow graceful shutdown
             while sleep_seconds > 0 and not self._shutdown:
                 time.sleep(min(sleep_seconds, 60))

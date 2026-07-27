@@ -261,7 +261,7 @@ header {
     position: relative;
     z-index: 1;
     display: grid;
-    grid-template-columns: 2fr 1fr;
+    grid-template-columns: 2fr minmax(0, 1fr);
     gap: 16px;
     padding: 16px 24px 32px;
     max-width: 1800px;
@@ -479,6 +479,7 @@ td.pnl-negative { color: var(--red); font-weight: 600; }
 .signal-text {
     color: var(--text-secondary);
     flex: 1;
+    min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

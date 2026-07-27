@@ -18,7 +18,8 @@ try:
     from growwapi import GrowwAPI, GrowwFeed
 except ImportError:
     GrowwFeed = None
-    logger.warning("growwapi not installed — market feed will run in offline mode")
+    logger.warning(
+        "growwapi not installed — market feed will run in offline mode")
 
 
 @dataclass
@@ -57,7 +58,8 @@ class MarketFeed:
     def connect(self):
         """Initialize and connect the feed."""
         if GrowwFeed is None:
-            logger.warning("GrowwFeed not available — running in offline/paper mode")
+            logger.warning(
+                "GrowwFeed not available — running in offline/paper mode")
             self._connected = False
             return
 
@@ -79,7 +81,8 @@ class MarketFeed:
 
             try:
                 if self._feed is not None:
-                    self._feed.subscribe_live_data(GrowwAPI.SEGMENT_CASH, symbol)
+                    self._feed.subscribe_live_data(
+                        GrowwAPI.SEGMENT_CASH, symbol)
                 self._subscribed_symbols.add(symbol)
                 logger.debug("Subscribed to live feed: {}", symbol)
             except Exception as e:
@@ -96,7 +99,8 @@ class MarketFeed:
 
             try:
                 if self._feed is not None:
-                    self._feed.unsubscribe_live_data(GrowwAPI.SEGMENT_CASH, symbol)
+                    self._feed.unsubscribe_live_data(
+                        GrowwAPI.SEGMENT_CASH, symbol)
                 self._subscribed_symbols.discard(symbol)
                 logger.debug("Unsubscribed from: {}", symbol)
             except Exception as e:
@@ -149,7 +153,6 @@ class MarketFeed:
             }
         return None
 
-
     def _update_tick(self, symbol: str, ltp: float = 0, **kwargs):
         """Update the tick buffer and notify listeners."""
         symbol = symbol.upper()
@@ -181,7 +184,6 @@ class MarketFeed:
     def on_tick(self, callback: Callable):
         """Register a callback for tick updates. callback(tick: Tick)"""
         self._listeners.append(callback)
-
 
     def is_connected(self) -> bool:
         return self._connected

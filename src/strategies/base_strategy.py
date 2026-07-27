@@ -60,7 +60,6 @@ class BaseStrategy(ABC):
         Calculate all technical indicators needed for this strategy.
         Appends indicator columns to the DataFrame.
         """
-        pass
 
     @abstractmethod
     def generate_signal(self, df: pd.DataFrame, symbol: str) -> Signal:
@@ -74,7 +73,6 @@ class BaseStrategy(ABC):
         Returns:
             Signal with type (BUY/SELL/HOLD), confidence, and metadata
         """
-        pass
 
     def _safe_get(self, series: pd.Series, index: int = -1, default: float = 0.0) -> float:
         """Safely get a value from a pandas Series."""

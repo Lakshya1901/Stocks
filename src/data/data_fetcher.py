@@ -2,19 +2,13 @@
 data_fetcher.py — Historical & Intraday Data Fetcher
 
 Fetches historical candle data for indicator warmup and backtesting.
-Uses yfinance as a fallback for historical data.
+Uses official Groww API for historical data.
 """
 
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from loguru import logger
-
-try:
-    import yfinance as yf
-except ImportError:
-    yf = None
-    logger.warning("yfinance not installed — historical data fallback unavailable")
 
 
 class DataFetcher:
@@ -55,18 +49,15 @@ class DataFetcher:
             if (datetime.now() - cached_time).total_seconds() < max_age:
                 return cached_df.copy()
 
-        # Try Groww API first (if available and has historical endpoint)
+        # Try Groww API
         df = self._fetch_from_groww(symbol, interval, days)
-
-        # Fallback to yfinance
-        if df is None or df.empty:
-            df = self._fetch_from_yfinance(symbol, interval, days)
 
         if df is not None and not df.empty:
             self._cache[cache_key] = (df, datetime.now())
             return df.copy()
 
-        logger.warning("No historical data available for {} ({})", symbol, interval)
+        logger.warning(
+            "No historical data available for {} ({})", symbol, interval)
         return pd.DataFrame()
 
     def _fetch_from_groww(self, symbol: str, interval: str, days: int) -> pd.DataFrame | None:
@@ -79,7 +70,8 @@ class DataFetcher:
             data = self._groww.get_historical_candles(
                 trading_symbol=symbol,
                 interval=interval,
-                from_date=(datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d"),
+                from_date=(datetime.now() - timedelta(days=days)
+                           ).strftime("%Y-%m-%d"),
                 to_date=datetime.now().strftime("%Y-%m-%d"),
             )
             if data:
@@ -90,41 +82,6 @@ class DataFetcher:
             logger.debug("Groww historical fetch failed for {}: {}", symbol, e)
 
         return None
-
-    def _fetch_from_yfinance(self, symbol: str, interval: str, days: int) -> pd.DataFrame | None:
-        """Fetch historical data from yfinance as fallback."""
-        if yf is None:
-            return None
-
-        yf_symbol = symbol.upper() + self.NSE_SUFFIX
-        logger.debug("Fetching {} from yfinance ({}, {} days)", yf_symbol, interval, days)
-
-        try:
-            # yfinance limits: 1m data = max 7 days, 5m = 60 days
-            ticker = yf.Ticker(yf_symbol)
-
-            # Map interval strings
-            interval_map = {"1m": "1m", "5m": "5m", "15m": "15m", "1d": "1d"}
-            yf_interval = interval_map.get(interval, "5m")
-
-            # For intraday data, yfinance has period limits
-            if yf_interval in ("1m",):
-                period = f"{min(days, 7)}d"
-            elif yf_interval in ("5m", "15m"):
-                period = f"{min(days, 60)}d"
-            else:
-                period = f"{days}d"
-
-            df = ticker.history(period=period, interval=yf_interval)
-
-            if df.empty:
-                return None
-
-            return self._normalize_dataframe(df)
-
-        except Exception as e:
-            logger.error("yfinance fetch failed for {}: {}", yf_symbol, e)
-            return None
 
     def _normalize_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """Normalize DataFrame to standard OHLCV columns."""
@@ -179,8 +136,65 @@ class DataFetcher:
         return None
 
     def get_intraday_data(self, symbol: str, interval: str = "5m") -> pd.DataFrame:
-        """Get today's intraday data."""
-        return self.get_historical_data(symbol, interval=interval, days=1)
+        """Get today's intraday data plus historical context for indicators."""
+        return self.get_historical_data(symbol, interval=interval, days=5)
+
+    def get_news_sentiment(self, symbol: str) -> float:
+        """
+        Fetch latest news for a symbol using Yahoo Finance RSS feed and analyze sentiment.
+        Returns a score between -1.0 (negative) and 1.0 (positive).
+        """
+        try:
+            from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+            import requests
+            import xml.etree.ElementTree as ET
+
+            analyzer = SentimentIntensityAnalyzer()
+        except ImportError:
+            logger.warning(
+                "vaderSentiment or requests not installed — skipping news sentiment")
+            return 0.0
+
+        try:
+            yf_symbol = symbol.upper() + self.NSE_SUFFIX
+            url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={yf_symbol}&region=IN&lang=en-IN"
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            response = requests.get(url, headers=headers, timeout=5)
+
+            if response.status_code != 200:
+                return 0.0
+
+            root = ET.fromstring(response.content)
+
+            total_compound = 0.0
+            count = 0
+
+            # Find all <item> tags in the RSS feed
+            for item in root.findall('.//item'):
+                title = item.find('title')
+                desc = item.find('description')
+
+                text = ""
+                if title is not None and title.text:
+                    text += title.text + ". "
+                if desc is not None and desc.text:
+                    text += desc.text
+
+                if text:
+                    scores = analyzer.polarity_scores(text)
+                    total_compound += scores["compound"]
+                    count += 1
+
+            if count > 0:
+                return total_compound / count
+            return 0.0
+
+        except Exception as e:
+            logger.debug(
+                "Failed to fetch news sentiment for {}: {}", symbol, e)
+            return 0.0
 
     def clear_cache(self):
         """Clear the data cache."""

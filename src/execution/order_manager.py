@@ -6,7 +6,6 @@ Supports both paper trading (simulation) and live trading modes.
 Uses TOTP-based authentication for automated daily login.
 """
 
-import time
 from datetime import datetime
 from enum import Enum
 from dataclasses import dataclass, field
@@ -180,7 +179,8 @@ class OrderManager:
     def _execute_live_order(self, order: Order) -> Order | None:
         """Execute order through Groww API."""
         if self._groww is None:
-            logger.error("Groww API not authenticated — cannot place live order")
+            logger.error(
+                "Groww API not authenticated — cannot place live order")
             order.status = OrderStatus.FAILED
             self._orders[order.order_id] = order
             return order
@@ -224,7 +224,8 @@ class OrderManager:
 
             if response:
                 order.status = OrderStatus.PLACED
-                order.groww_order_id = str(response.get("orderId", response.get("order_id", "")))
+                order.groww_order_id = str(response.get(
+                    "orderId", response.get("order_id", "")))
                 logger.info(
                     "[LIVE] Order placed: {} {} x{} @ {:.2f} | groww_id={}",
                     order.transaction_type, order.symbol, order.quantity,
@@ -232,7 +233,8 @@ class OrderManager:
                 )
             else:
                 order.status = OrderStatus.FAILED
-                logger.error("Order placement returned empty response for {}", order.symbol)
+                logger.error(
+                    "Order placement returned empty response for {}", order.symbol)
 
         except Exception as e:
             order.status = OrderStatus.FAILED
@@ -249,7 +251,8 @@ class OrderManager:
             return False
 
         if order.status not in (OrderStatus.PLACED, OrderStatus.OPEN):
-            logger.warning("Cannot cancel order {} — status is {}", order_id, order.status.value)
+            logger.warning("Cannot cancel order {} — status is {}",
+                           order_id, order.status.value)
             return False
 
         if order.paper:
@@ -261,7 +264,8 @@ class OrderManager:
             if self._groww and order.groww_order_id:
                 self._groww.cancel_order(order_id=order.groww_order_id)
                 order.status = OrderStatus.CANCELLED
-                logger.info("[LIVE] Order {} cancelled (groww_id={})", order_id, order.groww_order_id)
+                logger.info("[LIVE] Order {} cancelled (groww_id={})",
+                            order_id, order.groww_order_id)
                 return True
         except Exception as e:
             logger.error("Failed to cancel order {}: {}", order_id, e)
@@ -271,7 +275,6 @@ class OrderManager:
     def get_order(self, order_id: str) -> Order | None:
         """Get order by ID."""
         return self._orders.get(order_id)
-
 
     @property
     def is_live(self) -> bool:

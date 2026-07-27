@@ -15,7 +15,7 @@ scanner:
   scan_universe: all      
   min_price: 1            
   max_price: 50000        
-  top_picks: 50           
+  top_picks: 100           
   min_avg_volume: 500000  
   min_atr_pct: 1.5        
 
@@ -47,4 +47,13 @@ strategies:
     orb_window_minutes: 15
     timeout_hour: 10
     timeout_minute: 30
-    weight: 0.30
+    weight: 0.25
+
+  ttm_squeeze:
+    enabled: true
+    bb_window: 20
+    bb_std: 2.0
+    kc_window: 20
+    kc_atr_multiplier: 1.5
+    momentum_period: 12
+    weight: 0.40

@@ -43,15 +43,19 @@ class RiskManager:
     def update_config(self, trading_cfg: dict):
         """Hot-reload capital constraints dynamically."""
         self._capital = trading_cfg.get("capital", self._capital)
-        self._max_per_trade = trading_cfg.get("max_per_trade", self._max_per_trade)
-        self._max_open_positions = trading_cfg.get("max_open_positions", self._max_open_positions)
-        self._max_daily_loss = trading_cfg.get("max_daily_loss", self._max_daily_loss)
-        
+        self._max_per_trade = trading_cfg.get(
+            "max_per_trade", self._max_per_trade)
+        self._max_open_positions = trading_cfg.get(
+            "max_open_positions", self._max_open_positions)
+        self._max_daily_loss = trading_cfg.get(
+            "max_daily_loss", self._max_daily_loss)
+
         # Check if we should unhalt due to a max_daily_loss bump
         if self._halted and self._daily_pnl > -self._max_daily_loss:
             self._halted = False
-            logger.info("Risk manager unhalted due to increased daily loss limit")
-            
+            logger.info(
+                "Risk manager unhalted due to increased daily loss limit")
+
         logger.info(
             "Risk manager config hot-reloaded: capital={}, max_trade={}, max_loss={}",
             self._capital, self._max_per_trade, self._max_daily_loss
@@ -170,7 +174,7 @@ class RiskManager:
         return 0
 
     def calculate_trailing_stop(self, entry_price: float, current_price: float,
-                                 current_stop: float, signal_type: SignalType) -> float:
+                                current_stop: float, signal_type: SignalType) -> float:
         """
         Calculate trailing stop price.
         Only activates once the trade is in profit by at least 1%.
@@ -179,7 +183,8 @@ class RiskManager:
             profit_pct = (current_price - entry_price) / entry_price
             if profit_pct >= self._stop_loss_pct:  # In profit by at least SL%
                 new_stop = current_price * (1 - self._trailing_stop_pct)
-                return max(new_stop, current_stop)  # Only move stop up, never down
+                # Only move stop up, never down
+                return max(new_stop, current_stop)
         elif signal_type == SignalType.SELL:
             profit_pct = (entry_price - current_price) / entry_price
             if profit_pct >= self._stop_loss_pct:
@@ -202,7 +207,8 @@ class RiskManager:
             "highest_price": entry_price,
             "lowest_price": entry_price,
         }
-        self._sector_positions[sector] = self._sector_positions.get(sector, 0) + 1
+        self._sector_positions[sector] = self._sector_positions.get(
+            sector, 0) + 1
         self._daily_trades += 1
         logger.info(
             "Position registered: {} {} x{} @ {:.2f}",
@@ -217,7 +223,8 @@ class RiskManager:
 
         # Update sector count
         sector = pos.get("sector", "other")
-        self._sector_positions[sector] = max(0, self._sector_positions.get(sector, 0) - 1)
+        self._sector_positions[sector] = max(
+            0, self._sector_positions.get(sector, 0) - 1)
 
         # Calculate P&L
         if pos["signal_type"] == SignalType.BUY.value:
@@ -275,7 +282,6 @@ class RiskManager:
                 return True, f"TAKE_PROFIT hit ({current_price:.2f} <= {take_profit:.2f})"
 
         return False, ""
-
 
     def _get_available_capital(self) -> float:
         """Calculate available capital after accounting for open positions."""

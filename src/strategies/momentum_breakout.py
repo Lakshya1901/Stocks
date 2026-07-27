@@ -12,7 +12,6 @@ Logic:
 
 import pandas as pd
 import ta as ta_lib
-from loguru import logger
 
 from src.strategies.base_strategy import BaseStrategy, Signal, SignalType
 
@@ -37,8 +36,10 @@ class MomentumBreakoutStrategy(BaseStrategy):
             return df
 
         # EMAs
-        ema_fast_ind = ta_lib.trend.EMAIndicator(close=df["close"], window=self._ema_fast)
-        ema_slow_ind = ta_lib.trend.EMAIndicator(close=df["close"], window=self._ema_slow)
+        ema_fast_ind = ta_lib.trend.EMAIndicator(
+            close=df["close"], window=self._ema_fast)
+        ema_slow_ind = ta_lib.trend.EMAIndicator(
+            close=df["close"], window=self._ema_slow)
         df["ema_fast"] = ema_fast_ind.ema_indicator()
         df["ema_slow"] = ema_slow_ind.ema_indicator()
 
@@ -54,12 +55,14 @@ class MomentumBreakoutStrategy(BaseStrategy):
         df["macd_hist"] = macd_ind.macd_diff()
 
         # RSI
-        rsi_ind = ta_lib.momentum.RSIIndicator(close=df["close"], window=self._rsi_length)
+        rsi_ind = ta_lib.momentum.RSIIndicator(
+            close=df["close"], window=self._rsi_length)
         df["rsi"] = rsi_ind.rsi()
 
         # Volume moving average
         if "volume" in df.columns:
-            vol_sma = ta_lib.trend.SMAIndicator(close=df["volume"].astype(float), window=20)
+            vol_sma = ta_lib.trend.SMAIndicator(
+                close=df["volume"].astype(float), window=20)
             df["volume_ma"] = vol_sma.sma_indicator()
             df["volume_ratio"] = df["volume"] / df["volume_ma"]
 
@@ -84,7 +87,8 @@ class MomentumBreakoutStrategy(BaseStrategy):
         macd_hist = self._safe_get(df.get("macd_hist", pd.Series()))
         macd_hist_prev = self._safe_get(df.get("macd_hist", pd.Series()), -2)
         rsi = self._safe_get(df.get("rsi", pd.Series()))
-        volume_ratio = self._safe_get(df.get("volume_ratio", pd.Series()), default=1.0)
+        volume_ratio = self._safe_get(
+            df.get("volume_ratio", pd.Series()), default=1.0)
 
         if price == 0 or ema_fast == 0 or ema_slow == 0:
             return default

@@ -5,7 +5,6 @@ Scans all 1800+ NSE equities every morning and picks the top 50
 most likely to move profitably during the trading session.
 """
 
-import pandas as pd
 import ta as ta_lib
 from datetime import datetime
 from loguru import logger
@@ -63,7 +62,8 @@ class StockScanner:
         self._min_atr_pct = self._config.get("min_atr_pct", 1.5)
         self._min_price = self._config.get("min_price", 1)
         self._max_price = self._config.get("max_price", 50000)
-        self._max_sector_positions = config.get("risk", {}).get("max_sector_positions", 3)
+        self._max_sector_positions = config.get(
+            "risk", {}).get("max_sector_positions", 3)
 
     def scan(self) -> list[dict]:
         """
@@ -78,19 +78,23 @@ class StockScanner:
 
         # Stage 1: Load universe
         all_symbols = self._instruments.get_all_symbols()
-        logger.info("Stage 1 — Universe: {} NSE equities loaded", len(all_symbols))
+        logger.info("Stage 1 — Universe: {} NSE equities loaded",
+                    len(all_symbols))
 
         # Stage 2: Liquidity filter
         liquid_stocks = self._filter_liquidity(all_symbols)
-        logger.info("Stage 2 — Liquidity: {} stocks passed (volume > {})", len(liquid_stocks), self._min_volume)
+        logger.info("Stage 2 — Liquidity: {} stocks passed (volume > {})", len(
+            liquid_stocks), self._min_volume)
 
         # Stage 3: Volatility filter
         volatile_stocks = self._filter_volatility(liquid_stocks)
-        logger.info("Stage 3 — Volatility: {} stocks passed (ATR% > {})", len(volatile_stocks), self._min_atr_pct)
+        logger.info("Stage 3 — Volatility: {} stocks passed (ATR% > {})", len(
+            volatile_stocks), self._min_atr_pct)
 
         # Stage 4: Price action analysis
         movers = self._filter_price_action(volatile_stocks)
-        logger.info("Stage 4 — Price Action: {} stocks showing movement", len(movers))
+        logger.info(
+            "Stage 4 — Price Action: {} stocks showing movement", len(movers))
 
         # Stage 5: Momentum scoring
         scored = self._score_momentum(movers)
@@ -115,8 +119,13 @@ class StockScanner:
     def _filter_liquidity(self, symbols: list) -> list[dict]:
         """Stage 2: Filter stocks by average daily volume."""
         results = []
+        total = len(symbols)
 
-        for symbol in symbols:
+        for i, symbol in enumerate(symbols, 1):
+            if i % 500 == 0:
+                logger.info(
+                    "  ... scanned {}/{} stocks for liquidity ...", i, total)
+
             try:
                 avg_vol = self._fetcher.get_average_volume(symbol, days=20)
                 if avg_vol is None or avg_vol < self._min_volume:
@@ -172,7 +181,8 @@ class StockScanner:
                 results.append(stock)
 
             except Exception as e:
-                logger.debug("Volatility check failed for {}: {}", stock["symbol"], e)
+                logger.debug("Volatility check failed for {}: {}",
+                             stock["symbol"], e)
                 continue
 
         return results
@@ -191,13 +201,15 @@ class StockScanner:
 
                 prev_close = float(df["close"].iloc[-2])
                 latest_close = float(df["close"].iloc[-1])
-                latest_volume = float(df["volume"].iloc[-1]) if "volume" in df.columns else 0
+                latest_volume = float(
+                    df["volume"].iloc[-1]) if "volume" in df.columns else 0
 
                 # Gap percentage
                 gap_pct = ((latest_close - prev_close) / prev_close) * 100
 
                 # Volume spike
-                volume_ratio = latest_volume / stock["avg_volume"] if stock["avg_volume"] > 0 else 0
+                volume_ratio = latest_volume / \
+                    stock["avg_volume"] if stock["avg_volume"] > 0 else 0
 
                 # Check if stock is near recent high/low (support/resistance)
                 recent_high = float(df["high"].max())
@@ -218,7 +230,8 @@ class StockScanner:
                     results.append(stock)
 
             except Exception as e:
-                logger.debug("Price action check failed for {}: {}", stock["symbol"], e)
+                logger.debug("Price action check failed for {}: {}",
+                             stock["symbol"], e)
                 continue
 
         return results
@@ -239,7 +252,8 @@ class StockScanner:
                 signals = []
 
                 # RSI momentum (0-1)
-                rsi_indicator = ta_lib.momentum.RSIIndicator(close=df["close"], window=14)
+                rsi_indicator = ta_lib.momentum.RSIIndicator(
+                    close=df["close"], window=14)
                 rsi_series = rsi_indicator.rsi()
                 if rsi_series is not None and not rsi_series.empty:
                     rsi_val = float(rsi_series.iloc[-1])
@@ -286,15 +300,30 @@ class StockScanner:
                         else:
                             score += 0.05
 
-                # Price trend — 5-day returns
+                # Price trend — 5-day returns and 1-day/intraday return
                 if len(df) >= 5:
-                    ret_5d = (float(df["close"].iloc[-1]) / float(df["close"].iloc[-5]) - 1) * 100
+                    ret_5d = (float(df["close"].iloc[-1]) /
+                              float(df["close"].iloc[-5]) - 1) * 100
+                    ret_1d = (float(df["close"].iloc[-1]) /
+                              float(df["close"].iloc[-2]) - 1) * 100
+
                     stock["return_5d"] = ret_5d
+                    stock["return_1d"] = ret_1d
+
+                    # Score 5-day trend
                     if abs(ret_5d) > 3:
                         score += 0.2
                         signals.append("STRONG_TREND")
                     elif abs(ret_5d) > 1:
                         score += 0.1
+
+                    # Score 1-day / intraday momentum (Top Gainers/Losers)
+                    if abs(ret_1d) > 4:
+                        score += 0.4  # Massive boost for huge gainers/losers
+                        signals.append("TOP_MOVER")
+                    elif abs(ret_1d) > 2:
+                        score += 0.2
+                        signals.append("ACTIVE_MOVER")
 
                 # ATR bonus — higher ATR% = more intraday opportunity
                 atr_bonus = min(stock.get("atr_pct", 0) / 10, 0.2)
@@ -304,12 +333,24 @@ class StockScanner:
                 gap_bonus = min(abs(stock.get("gap_pct", 0)) / 5, 0.15)
                 score += gap_bonus
 
+                # News Sentiment Bonus (Live News)
+                sentiment = self._fetcher.get_news_sentiment(stock["symbol"])
+                stock["sentiment"] = sentiment
+                if sentiment > 0.2:
+                    score += 0.4  # Huge boost for positive news
+                    signals.append("POS_NEWS")
+                elif sentiment < -0.2:
+                    # Huge boost for negative news (good for shorting)
+                    score += 0.4
+                    signals.append("NEG_NEWS")
+
                 stock["score"] = score
                 stock["signals"] = signals
                 results.append(stock)
 
             except Exception as e:
-                logger.debug("Momentum scoring failed for {}: {}", stock["symbol"], e)
+                logger.debug("Momentum scoring failed for {}: {}",
+                             stock["symbol"], e)
                 continue
 
         return results
@@ -325,7 +366,8 @@ class StockScanner:
         # Enforce sector diversification (relaxed for 50 picks)
         picks = []
         sector_counts = {}
-        max_per_sector = max(self._max_sector_positions, 8)  # Allow more per sector for 50 picks
+        # Allow more per sector for 50 picks
+        max_per_sector = max(self._max_sector_positions, 8)
 
         for stock in stocks:
             if len(picks) >= self._top_picks:
@@ -341,4 +383,3 @@ class StockScanner:
             sector_counts[sector] = current_count + 1
 
         return picks
-

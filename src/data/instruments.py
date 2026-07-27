@@ -12,7 +12,8 @@ import requests
 from loguru import logger
 
 INSTRUMENT_CSV_URL = "https://growwapi-assets.groww.in/instruments/instrument.csv"
-CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "instruments")
+CACHE_DIR = os.path.join(os.path.dirname(
+    __file__), "..", "..", "data", "instruments")
 CACHE_FILE = os.path.join(CACHE_DIR, "instruments.csv")
 CACHE_MAX_AGE_SECONDS = 86400  # 24 hours
 
@@ -60,7 +61,8 @@ class InstrumentCatalog:
             resp.raise_for_status()
             with open(CACHE_FILE, "w", encoding="utf-8") as f:
                 f.write(resp.text)
-            logger.info("Instrument CSV downloaded and cached at {}", CACHE_FILE)
+            logger.info(
+                "Instrument CSV downloaded and cached at {}", CACHE_FILE)
         except requests.RequestException as e:
             logger.error("Failed to download instrument CSV: {}", e)
             if not os.path.exists(CACHE_FILE):
@@ -79,18 +81,22 @@ class InstrumentCatalog:
         # Normalize column names (Groww CSV may vary)
         df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
 
-        # Filter for NSE equity (CASH segment) only
+        # Filter for NSE equity (CASH segment) and EQ series only
+        # EQ filters out bonds, NCDs, and SME stocks that Yahoo Finance doesn't support
         nse_mask = df["exchange"].str.upper() == "NSE"
         cash_mask = df["segment"].str.upper() == "CASH"
-        equity_mask = nse_mask & cash_mask
+        series_mask = df["series"].str.upper() == "EQ"
+        equity_mask = nse_mask & cash_mask & series_mask
 
         self._instruments_df = df[equity_mask].copy()
         self._instruments_df.reset_index(drop=True, inplace=True)
 
         # Build fast lookup maps
         for _, row in self._instruments_df.iterrows():
-            symbol = str(row.get("trading_symbol", row.get("tradingsymbol", ""))).strip()
-            token = str(row.get("exchange_token", row.get("instrument_token", ""))).strip()
+            symbol = str(row.get("trading_symbol",
+                         row.get("tradingsymbol", ""))).strip()
+            token = str(row.get("exchange_token", row.get(
+                "instrument_token", ""))).strip()
             if symbol:
                 self._symbol_map[symbol.upper()] = row.to_dict()
             if token:
@@ -107,7 +113,6 @@ class InstrumentCatalog:
     def get_by_token(self, token: str) -> dict | None:
         """Look up instrument details by exchange token."""
         return self._token_map.get(str(token))
-
 
     def classify_price_tier(self, price: float) -> str:
         """Classify a stock into a price tier."""

@@ -5,7 +5,7 @@ Tracks all open and closed positions with real-time P&L computation.
 """
 
 from datetime import datetime, date
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from loguru import logger
 
 from src.strategies.base_strategy import SignalType
@@ -78,8 +78,38 @@ class Portfolio:
         self._daily_realized_pnl = 0.0
         self._daily_date = date.today()
         self._open_positions.clear()
-        # Keep closed positions for the day's history
         logger.info("Portfolio reset for new day")
+
+    def restore_position(self, pos_data: dict):
+        """Restore an open position from database."""
+        # Convert entry_time string to datetime
+        try:
+            from datetime import datetime as dt
+            entry_time = dt.fromisoformat(pos_data["entry_time"])
+        except Exception:
+            entry_time = datetime.now()
+
+        pos = Position(
+            symbol=pos_data["symbol"],
+            signal_type=pos_data["signal_type"],
+            quantity=pos_data["quantity"],
+            entry_price=pos_data["entry_price"],
+            entry_time=entry_time,
+            stop_loss=pos_data["stop_loss"],
+            take_profit=pos_data["take_profit"],
+            trailing_stop=pos_data["trailing_stop"],
+            current_price=pos_data["entry_price"],
+            highest_price=pos_data.get(
+                "highest_price", pos_data["entry_price"]),
+            lowest_price=pos_data.get("lowest_price", pos_data["entry_price"]),
+            strategy=pos_data.get("strategy", ""),
+            sector=pos_data.get("sector", "other"),
+            order_id=pos_data.get("order_id", ""),
+        )
+        self._open_positions[pos.symbol] = pos
+        logger.info("Restored open position: {} {} x{}",
+                    pos.signal_type, pos.symbol, pos.quantity)
+        return pos
 
     def open_position(
         self,

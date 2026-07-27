@@ -48,6 +48,23 @@ class Database:
                 paper INTEGER DEFAULT 1,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
+            
+            CREATE TABLE IF NOT EXISTS open_positions (
+                symbol TEXT PRIMARY KEY,
+                signal_type TEXT NOT NULL,
+                quantity INTEGER NOT NULL,
+                entry_price REAL NOT NULL,
+                stop_loss REAL DEFAULT 0,
+                take_profit REAL DEFAULT 0,
+                trailing_stop REAL DEFAULT 0,
+                strategy TEXT DEFAULT '',
+                sector TEXT DEFAULT 'other',
+                order_id TEXT DEFAULT '',
+                entry_time TEXT NOT NULL,
+                highest_price REAL DEFAULT 0,
+                lowest_price REAL DEFAULT 0,
+                paper INTEGER DEFAULT 1
+            );
 
             CREATE TABLE IF NOT EXISTS daily_summary (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,6 +118,43 @@ class Database:
 
         self._conn.commit()
         logger.info("Database initialized at {}", self._db_path)
+
+    def save_open_position(self, pos: dict):
+        """Save or update an open position."""
+        self._conn.execute("""
+            INSERT OR REPLACE INTO open_positions (
+                symbol, signal_type, quantity, entry_price, stop_loss, take_profit,
+                trailing_stop, strategy, sector, order_id, entry_time, highest_price,
+                lowest_price, paper
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            pos.get("symbol", ""),
+            pos.get("signal_type", ""),
+            pos.get("quantity", 0),
+            pos.get("entry_price", 0),
+            pos.get("stop_loss", 0),
+            pos.get("take_profit", 0),
+            pos.get("trailing_stop", 0),
+            pos.get("strategy", ""),
+            pos.get("sector", "other"),
+            pos.get("order_id", ""),
+            pos.get("entry_time", datetime.now().isoformat()),
+            pos.get("highest_price", 0),
+            pos.get("lowest_price", 0),
+            1 if pos.get("paper", True) else 0,
+        ))
+        self._conn.commit()
+
+    def delete_open_position(self, symbol: str):
+        """Delete an open position once closed."""
+        self._conn.execute(
+            "DELETE FROM open_positions WHERE symbol = ?", (symbol,))
+        self._conn.commit()
+
+    def get_open_positions(self) -> list[dict]:
+        """Get all currently open positions."""
+        cursor = self._conn.execute("SELECT * FROM open_positions")
+        return [dict(row) for row in cursor.fetchall()]
 
     def record_trade(self, trade: dict):
         """Record a completed trade."""
@@ -166,6 +220,19 @@ class Database:
             ))
         self._conn.commit()
 
+    def get_scanner_results(self, scan_date: str) -> list[dict]:
+        """Retrieve scan results for a given date."""
+        try:
+            cursor = self._conn.cursor()
+            cursor.execute(
+                "SELECT symbol, score, tier, sector FROM scanner_results WHERE scan_date = ? AND selected = 1", (scan_date,))
+            rows = cursor.fetchall()
+            return [{"symbol": row[0], "score": row[1], "tier": row[2], "sector": row[3], "price": 0.0} for row in rows]
+        except Exception as e:
+            from loguru import logger
+            logger.error("Failed to get scanner results: {}", e)
+            return []
+
     def save_daily_summary(self, summary: dict):
         """Save or update daily summary."""
         self._conn.execute("""
@@ -209,10 +276,10 @@ class Database:
     def get_daily_summaries(self, days: int = 30) -> list[dict]:
         """Get recent daily summaries."""
         cursor = self._conn.execute(
-            "SELECT * FROM daily_summary ORDER BY trade_date DESC LIMIT ?", (days,)
+            "SELECT * FROM daily_summary ORDER BY trade_date DESC LIMIT ?", (
+                days,)
         )
         return [dict(row) for row in cursor.fetchall()]
-
 
     def close(self):
         """Close database connection."""

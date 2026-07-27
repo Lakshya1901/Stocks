@@ -62,7 +62,8 @@ class OpeningRangeBreakoutStrategy(BaseStrategy):
 
         # Volume moving average for confirmation
         if "volume" in df.columns:
-            vol_sma = ta_lib.trend.SMAIndicator(close=df["volume"].astype(float), window=20)
+            vol_sma = ta_lib.trend.SMAIndicator(
+                close=df["volume"].astype(float), window=20)
             df["volume_ma"] = vol_sma.sma_indicator()
             df["volume_ratio"] = df["volume"] / df["volume_ma"]
 
@@ -88,10 +89,19 @@ class OpeningRangeBreakoutStrategy(BaseStrategy):
             return False
 
         # Try to find opening candles by index or time
+        # Filter for today's data only
+        today = datetime.now().date()
+        today_df = df[df.index.date == today]
+
+        if today_df.empty:
+            return False
+
         # For 1-min data, take first 15 candles
-        # For 5-min data, take first 3 candles
-        orb_candles = min(self._orb_window, len(df))
-        orb_data = df.head(orb_candles)
+        # For 5-min data, take first 3 candles (15 mins / 5 mins)
+        orb_candles = 3 if len(today_df) > 1 and (
+            today_df.index[1] - today_df.index[0]).seconds // 60 == 5 else 15
+
+        orb_data = today_df.head(orb_candles)
 
         if len(orb_data) < 1:
             return False
@@ -139,7 +149,8 @@ class OpeningRangeBreakoutStrategy(BaseStrategy):
 
         price = self._safe_get(df["close"])
         prev_price = self._safe_get(df["close"], -2)
-        volume_ratio = self._safe_get(df.get("volume_ratio", pd.Series()), default=1.0)
+        volume_ratio = self._safe_get(
+            df.get("volume_ratio", pd.Series()), default=1.0)
         atr = self._safe_get(df.get("atr", pd.Series()), default=0)
 
         orb_high = orb["high"]

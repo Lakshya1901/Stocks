@@ -4,7 +4,7 @@
    ================================================================ */
 
 // ============ Socket.IO Connection ============
-const socket = io({ transports: ['websocket', 'polling'] });
+const socket = io({ transports: ['polling'] });
 
 // ============ State ============
 const state = {

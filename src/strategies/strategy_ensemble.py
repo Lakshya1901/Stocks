@@ -45,21 +45,28 @@ class StrategyEnsemble:
                 signals.append((strategy, signal))
 
             except Exception as e:
-                logger.error("Strategy {} failed for {}: {}", strategy.name, symbol, e)
+                logger.error("Strategy {} failed for {}: {}",
+                             strategy.name, symbol, e)
                 continue
 
         if not signals:
             return None
 
-        # Aggregate signals using weighted voting
+        # Aggregate signals using weighted voting, ignoring HOLD (neutral) signals
+        active_signals = [
+            (s, sig) for s, sig in signals if sig.signal_type != SignalType.HOLD]
+
+        if not active_signals:
+            return None
+
         buy_score = 0.0
         sell_score = 0.0
-        total_weight = sum(s.weight for s, _ in signals)
+        total_weight = sum(s.weight for s, _ in active_signals)
 
         best_buy_signal = None
         best_sell_signal = None
 
-        for strategy, signal in signals:
+        for strategy, signal in active_signals:
             weight = strategy.weight / total_weight if total_weight > 0 else 0
             weighted_confidence = weight * signal.confidence
 
@@ -78,7 +85,7 @@ class StrategyEnsemble:
         # Store history
         self._signal_history.append({
             "symbol": symbol,
-            "timestamp": datetime.now(),
+            "time": datetime.now().strftime("%H:%M:%S"),
             "buy_score": buy_score,
             "sell_score": sell_score,
             "signals": [(s.name, sig.signal_type.value, sig.confidence) for s, sig in signals],
@@ -89,7 +96,8 @@ class StrategyEnsemble:
 
         # Check for conflicting signals — skip if both buy and sell are strong
         if buy_score > 0.3 and sell_score > 0.3:
-            logger.debug("{}: Conflicting signals (buy={:.2f}, sell={:.2f}) — skipping", symbol, buy_score, sell_score)
+            logger.debug("{}: Conflicting signals (buy={:.2f}, sell={:.2f}) — skipping",
+                         symbol, buy_score, sell_score)
             return None
 
         # Return signal if above threshold
@@ -107,7 +115,8 @@ class StrategyEnsemble:
                 ),
                 indicators=best_buy_signal.indicators,
             )
-            logger.info("ENSEMBLE SIGNAL: {} {} @ {:.2f} (confidence={:.2f})", symbol, "BUY", final.price, buy_score)
+            logger.info("ENSEMBLE SIGNAL: {} {} @ {:.2f} (confidence={:.2f})",
+                        symbol, "BUY", final.price, buy_score)
             return final
 
         if sell_score >= self._threshold and best_sell_signal:
@@ -124,7 +133,8 @@ class StrategyEnsemble:
                 ),
                 indicators=best_sell_signal.indicators,
             )
-            logger.info("ENSEMBLE SIGNAL: {} {} @ {:.2f} (confidence={:.2f})", symbol, "SELL", final.price, sell_score)
+            logger.info("ENSEMBLE SIGNAL: {} {} @ {:.2f} (confidence={:.2f})",
+                        symbol, "SELL", final.price, sell_score)
             return final
 
         return None
@@ -134,7 +144,8 @@ class StrategyEnsemble:
         parts = []
         for strategy, signal in signals:
             if signal.signal_type != SignalType.HOLD:
-                parts.append(f"{strategy.name}={signal.signal_type.value}({signal.confidence:.2f})")
+                parts.append(
+                    f"{strategy.name}={signal.signal_type.value}({signal.confidence:.2f})")
 
         if parts:
             logger.debug(
