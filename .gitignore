@@ -29,3 +29,10 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Bot runtime state (local, may contain account/trade data)
+.groww_token.json
+bot.log
+bot.stdout
+trades.jsonl
+open_positions.json

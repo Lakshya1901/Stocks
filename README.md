@@ -1,113 +1,80 @@
-<div align="center">
-  <h1>⚡ DayTrader Bot</h1>
-  <p><strong>Fully automated, real-time algorithmic day trading bot for the NSE (India).</strong></p>
-  
-  <p>
-    <a href="https://github.com/yourusername/Stocks/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-    <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.11+-green.svg" alt="Python Version"></a>
-    <a href="https://groww.in/"><img src="https://img.shields.io/badge/Broker-Groww-orange.svg" alt="Broker: Groww"></a>
-    <a href="#"><img src="https://img.shields.io/badge/Status-Active-success.svg" alt="Status"></a>
-  </p>
-</div>
+# Groww News Sentiment Trading Bot
 
----
+A fully automated trading bot that reads live financial news, uses AI to score sentiment, and executes trades on your Groww account.
 
-**DayTrader Bot** is a headless, fully automated intraday trading engine that scans the entire National Stock Exchange (NSE) universe of 1800+ stocks every morning, selects the best candidates, and executes trades autonomously using an ensemble of three proven strategies.
+## Project Structure
 
-It includes a beautiful **real-time glassmorphism dashboard** to monitor your P&L, live positions, and strategy signals.
-
-> [!WARNING]
-> **Disclaimer:** This software is for educational purposes only. Do not risk money which you are afraid to lose. USE THE SOFTWARE AT YOUR OWN RISK. The authors and contributors assume no responsibility for your trading results. Always test extensively in **Paper Trading Mode** before going live.
-
----
-
-## 🌟 Key Features
-
-- **Full NSE Universe Scanner**: Scans 1800+ equities daily at 9:00 AM. Filters for liquidity, volatility (ATR), price action gaps, and momentum to select the top 50 stocks for the day.
-- **Ensemble Strategy Engine**: Runs three strategies concurrently:
-  - *VWAP Mean Reversion* (Range-bound markets)
-  - *Momentum Breakout* (Trend following)
-  - *Opening Range Breakout / ORB* (Morning volatility)
-- **Strict Risk Management**: Enforces maximum daily loss limits, per-trade position sizing, 2:1 reward/risk ratios, trailing stops, and sector exposure caps.
-- **Automated Authentication**: Uses `pyotp` for completely headless TOTP login. No manual API key refreshing required.
-- **Real-Time Dashboard**: Flask + WebSocket UI with live charts, position tables, and an emergency square-off button.
-- **SQLite Persistence**: Automatically logs all trades, strategy signals, and daily summaries to a local database for backtesting and review.
-
----
-
-## 🚀 Quick Start (Local Paper Trading)
-
-The safest way to learn how the bot works is to run it locally on your machine in **Paper Trading mode**. It will simulate trades against real-time market data without risking a single penny.
-
-### 1. Clone & Install
-
-```bash
-git clone https://github.com/Lakshya1901/Stocks.git
-cd Stocks
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+```
+groww-bot/
+├── config.py      All settings + shared logging — edit this file only
+├── bot.py         Main loop + live dashboard — entry point
+├── news.py        RSS feeds, headline → NSE symbol matching, FinBERT sentiment
+├── market.py      Yahoo Finance prices/volume + technical indicators (RSI, MACD, Bollinger)
+├── risk.py        Position sizing, SL/TP, Groww fees, market hours & NSE holidays
+├── broker.py      Groww API (auth, cash, holdings, orders) + trade journal
+├── positions.py   Open positions: SL/TP exits, holdings, protective sells
+├── report.py      Net P&L report (python3 report.py)
+├── requirements.txt
+└── deploy/
+    └── setup.sh   One-shot cloud VM setup (Ubuntu 24.04)
 ```
 
-### 2. Configure Credentials
+## Quick Start
 
-```bash
-cp .env.example .env
+### Step 1 — Get your Groww API credentials
+Go to [groww.in/trade-api/api-keys](https://groww.in/trade-api/api-keys), log in, and generate an API Key and Secret.
+
+### Step 2 — Create your `.env` file
+Create a file called `.env` in the `groww-bot/` folder:
 ```
-
-Edit `.env` and add your Groww TOTP credentials:
-```env
-GROWW_TOTP_TOKEN=your_totp_token_here
+GROWW_API_KEY=your_api_key_here
 GROWW_TOTP_SECRET=your_totp_secret_here
 ```
-*(To get these: Log into Groww → Profile → Settings → Trading APIs → Generate TOTP Token).*
+Never commit this file to Git.
 
-### 3. Review Configuration
-
-Open `config.yaml`. Every parameter is heavily documented. Feel free to adjust the `capital`, `top_picks`, or strategy `weights`. **Ensure `mode` is set to `paper`.**
-
-### 4. Run the Bot
-
+### Step 3 — Run locally (for testing)
 ```bash
-python -m src.main
+pip install -r requirements.txt
+python bot.py
 ```
-The bot will initialize. Open your web browser and go to `http://localhost:8080` to view the live dashboard!
 
----
+### Step 4 — Deploy to AWS EC2
+1. Launch an Ubuntu 22.04 t2.micro instance (free tier eligible) in the **Mumbai (ap-south-1)** region.
+2. Copy the `groww-bot/` folder to the server:
+   ```bash
+   scp -r groww-bot/ ubuntu@YOUR_SERVER_IP:~/
+   ```
+3. SSH in and run the setup script:
+   ```bash
+   ssh ubuntu@YOUR_SERVER_IP
+   cd ~/groww-bot
+   chmod +x deploy/setup.sh
+   ./deploy/setup.sh
+   ```
+4. Edit the `.env` file on the server with your credentials.
+5. Start the bot:
+   ```bash
+   sudo systemctl start groww-bot
+   sudo journalctl -fu groww-bot   # watch live logs
+   ```
 
-## ☁️ Production Deployment (Live Trading)
+## Important: Test in Dry Run First
+`config.py` has `DRY_RUN = True` by default. In this mode the bot logs every trade it would make but places no real orders. Run it for at least one full trading day and verify the log output looks sensible before switching to live.
 
-Because the Groww API requires a **Static IP address** for order execution, you cannot run live trades from a standard home internet connection or a laptop that goes to sleep.
+To go live, open `config.py` and change:
+```python
+DRY_RUN = False
+```
+Then restart the bot.
 
-You must deploy the bot to a cloud server. 
+## Key Configuration Options (`config.py`)
 
-Please refer to our complete, step-by-step **[Production Deployment Guide (setup_cloud.md)](setup_cloud.md)**. It explains how to:
-1. Create a 100% Free Tier AWS EC2 server.
-2. Attach an Elastic IP (Static IP).
-3. Deploy the bot as a `systemd` background service that runs 24/7.
-
----
-
-## 🧠 How It Works (The Daily Lifecycle)
-
-If left running on a cloud server, the bot operates entirely on its own:
-
-1. **09:00 AM**: Runs the full NSE scan (1800+ stocks) and isolates the top 50 picks for the day based on momentum and volatility.
-2. **09:15 AM**: Market opens. Subscribes to live WebSocket feeds for the 50 picks. Collects data for the Opening Range Breakout strategy.
-3. **09:30 AM**: All strategies become fully active. The main trading loop runs every 3 seconds, evaluating indicators and ensemble signals.
-4. **02:30 PM**: Stops accepting *new* trade entries to prevent end-of-day volatility traps. Continues monitoring open positions for exit signals.
-5. **03:10 PM**: **Auto Square-Off**. Closes all remaining open positions to prevent the broker from force-closing them at market price.
-6. **03:30 PM**: Generates the End-of-Day report, saves it to the SQLite database, and goes to sleep until the next trading day.
-
----
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome! 
-Please check the [Contributing Guidelines](CONTRIBUTING.md) for details on how to get involved.
-
----
-
-## 📜 License
-
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+| Setting | Default | Description |
+|---|---|---|
+| `DRY_RUN` | `True` | Set to `False` to place real orders |
+| `TRADE_ACCOUNT_PCT` | `0.10` | Uses 10% of total account balance per trade |
+| `SENTIMENT_THRESHOLD` | `0.85` | Min FinBERT confidence score to act on news |
+| `TAKE_PROFIT_PCT` | `0.04` | Exit if up 4% |
+| `SENTIMENT_THRESHOLD` | `0.85` | Min AI confidence to act |
+| `MIN_DAILY_VOLUME` | `50000` | Liquidity guard (0 to disable) |
+| `POLL_INTERVAL_SECONDS` | `30` | How often to check for news |
