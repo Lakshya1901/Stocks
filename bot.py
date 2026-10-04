@@ -102,8 +102,20 @@ def _read_trades() -> list[dict]:
     return trades
 
 
+# Dashboard redraws every second; only re-read trades.jsonl when it changes (or the day rolls over)
+_trades_cache: dict = {"key": None, "trades": [], "pnl_line": ""}
+
+
+def _cached_trades_and_pnl() -> tuple[list[dict], str]:
+    st = TRADES_FILE.stat() if TRADES_FILE.exists() else None
+    key = (st.st_mtime_ns, st.st_size) if st else None, datetime.now(IST).date()
+    if _trades_cache["key"] != key:
+        _trades_cache.update(key=key, trades=_read_trades(), pnl_line=report.format_pnl_rich_line())
+    return _trades_cache["trades"], _trades_cache["pnl_line"]
+
+
 def _trades_table() -> Table:
-    trades = _read_trades()[-20:]  # last 20 trades
+    trades = _cached_trades_and_pnl()[0][-20:]  # last 20 trades
 
     tbl = Table(
         title="Trades",
@@ -147,7 +159,7 @@ def _status_panel() -> Panel:
     n_pos      = positions.open_position_count()
     available  = broker.get_account_balance()
     portfolio  = broker.get_portfolio_summary()
-    pnl_line   = report.format_pnl_rich_line()
+    pnl_line   = _cached_trades_and_pnl()[1]
 
     # Show portfolio total and available capital
     total_cap = portfolio.get("total", 0.0)
@@ -226,11 +238,11 @@ def run_cycle() -> None:
             logger.debug("No recognisable stock mentioned — skipping")
             continue
 
-        positions.check_holdings_against_news(headline, symbol)
-
         if _NON_NEWS_RE.search(headline):
-            logger.debug(f"Price-report / list headline, not news — skipping BUY: {headline}")
+            logger.debug(f"Price-report / list headline, not news — skipping: {headline}")
             continue
+
+        positions.check_holdings_against_news(headline, symbol)
 
         if positions.is_watching(symbol) or positions.is_holding(symbol):
             logger.debug(f"Already holding or watching {symbol} — skipping BUY")
@@ -266,6 +278,11 @@ def run_cycle() -> None:
                 f"[yellow]{datetime.now(IST).strftime('%H:%M:%S')} "
                 f"OVERBOUGHT {symbol} RSI={rsi:.0f}[/]"
             )
+            continue
+
+        if "error" not in tech_details and tech_score < TECHNICAL_SCORE_THRESHOLD:
+            logger.info(f"TECH BLOCK: {symbol} technical score {tech_score:.2f} < {TECHNICAL_SCORE_THRESHOLD}")
+            _push_log(f"[yellow]{datetime.now(IST).strftime('%H:%M:%S')} {symbol} technicals {tech_score:.2f} — skipped[/]")
             continue
 
         # --- Anti-chase: the move already happened ---

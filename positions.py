@@ -186,7 +186,7 @@ def get_all_positions() -> dict[str, WatchedPosition]:
 # =============================================================================
 # Tracks held stocks (both locally stored positions and Groww Demat holdings)
 # =============================================================================
-from config import NEGATIVE_SENTIMENT_THRESHOLD, EXCHANGE
+from config import NEGATIVE_SENTIMENT_THRESHOLD, EXCHANGE, DRY_RUN
 
 logger = get_logger(__name__)
 
@@ -246,13 +246,15 @@ def get_holdings_count() -> int:
 
 def check_holdings_against_news(headline: str, symbol: str) -> None:
     """
-    If the identified symbol is currently held and news sentiment is
+    If the identified symbol is a bot-managed position and news sentiment is
     strongly negative, the bot places a protective SELL order.
+    Manually held Demat shares are never sold.
     """
     clean_sym = symbol.strip().upper()
-    held_qty = _current_holdings.get(clean_sym, 0)
-    if held_qty == 0:
+    tracked = _positions.get(clean_sym)
+    if tracked is None or tracked.quantity <= 0:
         return
+    held_qty = tracked.quantity
 
     label, score = news.analyze(headline)
 
@@ -262,6 +264,9 @@ def check_holdings_against_news(headline: str, symbol: str) -> None:
             f"(holding {held_qty} shares). Initiating protective SELL."
         )
         price = market.get_current_price(clean_sym) or 0.0
+        if price <= 0 and DRY_RUN:
+            logger.warning(f"No live price for {clean_sym} — skipping simulated protective SELL")
+            return
 
         order_id = broker.place_sell_order(
             symbol=clean_sym,

@@ -257,9 +257,9 @@ def get_account_balance() -> float:
 
     In DRY_RUN mode, uses TOTAL_ACCOUNT_CAPITAL from config.
     """
-    # Use cached portfolio if fresh (< 6 hours), otherwise use config fallback
+    # Use cached portfolio if fresh (< 24 hours, i.e. refreshed at the last market open), otherwise use config fallback
     age_hours = (time.time() - _cached_portfolio["fetched_at"]) / 3600.0
-    if _cached_portfolio["fetched_at"] > 0 and age_hours < 6:
+    if _cached_portfolio["fetched_at"] > 0 and age_hours < 24:
         base_capital = _cached_portfolio["total"]
     else:
         base_capital = TOTAL_ACCOUNT_CAPITAL
@@ -368,11 +368,17 @@ def place_buy_order(params: TradeParams, extra: dict | None = None) -> str | Non
         if order_id is None:
             return None
         fill = _get_fill(order_id)
-        if fill:
-            filled = risk.build_params(params.symbol, fill[0], fill[1])
-            logger.info(f"{params.symbol} filled {fill[0]} @ ₹{fill[1]:.2f} (quote was ₹{params.entry_price:.2f})")
-            for k, v in vars(filled).items():
-                setattr(params, k, v)
+        if fill is None:
+            # Not confirmed filled: don't track a position (and its SL/TP sells) that may not exist
+            logger.warning(
+                f"BUY order {order_id} for {params.symbol} has no confirmed fill yet — "
+                f"not tracking it; check the order in Groww"
+            )
+            return None
+        filled = risk.build_params(params.symbol, fill[0], fill[1])
+        logger.info(f"{params.symbol} filled {fill[0]} @ ₹{fill[1]:.2f} (quote was ₹{params.entry_price:.2f})")
+        for k, v in vars(filled).items():
+            setattr(params, k, v)
         logger.info(
             f"BUY order placed: {params.quantity} x {params.symbol} — "
             f"order_id={order_id}"
@@ -406,7 +412,9 @@ def place_sell_order(symbol: str, exchange: str, quantity: int, reason: str = ""
             return None
         fill = _get_fill(order_id)
         if fill:
-            price = fill[1]
+            if fill[0] != quantity:
+                logger.warning(f"SELL order {order_id} for {symbol} filled {fill[0]} of {quantity}")
+            quantity, price = fill
         logger.info(
             f"SELL order placed: {quantity} x {symbol} "
             f"(reason: {reason}) — order_id={order_id}"

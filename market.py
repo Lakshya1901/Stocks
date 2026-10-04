@@ -209,8 +209,8 @@ def _rsi(close: pd.Series, period: int = 14) -> float:
     loss    = (-delta).clip(lower=0)
     avg_gain = gain.ewm(com=period - 1, min_periods=period).mean()
     avg_loss = loss.ewm(com=period - 1, min_periods=period).mean()
-    rs      = avg_gain / avg_loss.replace(0, float("inf"))
-    rsi_series = 100 - (100 / (1 + rs))
+    rs      = avg_gain / avg_loss  # no down days -> inf -> RSI 100
+    rsi_series = (100 - (100 / (1 + rs))).mask((avg_gain == 0) & (avg_loss == 0), 50.0)  # flat -> neutral
     return float(rsi_series.iloc[-1])
 
 

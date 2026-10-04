@@ -99,12 +99,13 @@ def fetch_new_headlines() -> list[dict]:
             _seen_urls.add(title_key)
 
             summary  = getattr(entry, "summary", "").strip()
-            published = ""
-            if hasattr(entry, "published_parsed") and entry.published_parsed:
-                dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
-                published = dt.strftime("%Y-%m-%d %H:%M UTC")
-                if datetime.now(timezone.utc) - dt > timedelta(hours=MAX_ARTICLE_AGE_HOURS):
-                    continue  # stale article — not actionable news
+            parsed = getattr(entry, "published_parsed", None) or getattr(entry, "updated_parsed", None)
+            if not parsed:
+                continue  # undated — can't tell if it's fresh news
+            dt = datetime(*parsed[:6], tzinfo=timezone.utc)
+            published = dt.strftime("%Y-%m-%d %H:%M UTC")
+            if datetime.now(timezone.utc) - dt > timedelta(hours=MAX_ARTICLE_AGE_HOURS):
+                continue  # stale article — not actionable news
 
             if headline:
                 new_articles.append({
