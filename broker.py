@@ -336,6 +336,23 @@ def _get_fill(order_id: str) -> tuple[int, float] | None:
         return None
 
 
+def _settle_fill(order_id: str, symbol: str, side: str) -> tuple[int, float] | None:
+    """
+    Fill for a just-placed order. If none is confirmed yet, cancels the rest of the order
+    so nothing can fill later untracked, then re-reads the fill (it may have filled before the cancel).
+    """
+    fill = _get_fill(order_id)
+    if fill is not None:
+        return fill
+    try:
+        get_client().cancel_order(groww_order_id=order_id, segment=GrowwAPI.SEGMENT_CASH, timeout=5)
+        logger.warning(f"{side} order {order_id} for {symbol} had no confirmed fill — cancelled it")
+    except Exception as exc:
+        logger.warning(f"Cancel of unconfirmed {side} order {order_id} for {symbol} failed: {exc}")
+    time.sleep(1)
+    return _get_fill(order_id)
+
+
 def is_ddpi_enabled() -> bool | None:
     """Whether DDPI is active. Without it, CDSL requires a TPIN/OTP each day before shares held in demat can be sold."""
     try:
@@ -367,11 +384,11 @@ def place_buy_order(params: TradeParams, extra: dict | None = None) -> str | Non
         order_id = _place_market_order(params.symbol, params.exchange, "BUY", params.quantity)
         if order_id is None:
             return None
-        fill = _get_fill(order_id)
+        fill = _settle_fill(order_id, params.symbol, "BUY")
         if fill is None:
-            # Not confirmed filled: don't track a position (and its SL/TP sells) that may not exist
-            logger.warning(
-                f"BUY order {order_id} for {params.symbol} has no confirmed fill yet — "
+            # Still nothing filled: don't track a position (and its SL/TP sells) that doesn't exist
+            logger.error(
+                f"BUY order {order_id} for {params.symbol} has no confirmed fill — "
                 f"not tracking it; check the order in Groww"
             )
             return None
@@ -390,10 +407,10 @@ def place_buy_order(params: TradeParams, extra: dict | None = None) -> str | Non
         return None
 
 
-def place_sell_order(symbol: str, exchange: str, quantity: int, reason: str = "", price: float = 0.0) -> str | None:
+def place_sell_order(symbol: str, exchange: str, quantity: int, reason: str = "", price: float = 0.0) -> tuple[str, int] | None:
     """
     Places a CNC (delivery) market SELL order.
-    Returns order_id on success, None on failure.
+    Returns (order_id, quantity actually sold) on success, None if nothing was sold.
     """
     mode = "DRY_RUN" if DRY_RUN else "LIVE"
 
@@ -404,23 +421,25 @@ def place_sell_order(symbol: str, exchange: str, quantity: int, reason: str = ""
             f"({'reason: ' + reason if reason else 'no reason given'})"
         )
         log_trade("SELL", symbol, quantity, price, reason, mode)
-        return fake_id
+        return fake_id, quantity
 
     try:
         order_id = _place_market_order(symbol, exchange, "SELL", quantity)
         if order_id is None:
             return None
-        fill = _get_fill(order_id)
-        if fill:
-            if fill[0] != quantity:
-                logger.warning(f"SELL order {order_id} for {symbol} filled {fill[0]} of {quantity}")
-            quantity, price = fill
+        fill = _settle_fill(order_id, symbol, "SELL")
+        if fill is None:
+            logger.error(f"SELL order {order_id} for {symbol} has no confirmed fill — nothing sold")
+            return None
+        if fill[0] != quantity:
+            logger.warning(f"SELL order {order_id} for {symbol} filled {fill[0]} of {quantity}")
+        quantity, price = fill
         logger.info(
             f"SELL order placed: {quantity} x {symbol} "
             f"(reason: {reason}) — order_id={order_id}"
         )
         log_trade("SELL", symbol, quantity, price, reason, mode)
-        return str(order_id)
+        return str(order_id), quantity
     except Exception as exc:
         logger.error(f"Failed to place SELL order for {symbol}: {exc}")
         return None
