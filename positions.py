@@ -149,18 +149,22 @@ def check_all_positions() -> None:
 
         if reason:
             logger.info(f"Exiting {symbol}: {reason}")
-            order_id = broker.place_sell_order(
+            sold = broker.place_sell_order(
                 symbol   = pos.symbol,
                 exchange = pos.exchange,
                 quantity = pos.quantity,
                 reason   = reason,
                 price    = price,
             )
-            if order_id:
+            if sold:
                 symbols_to_remove.append(symbol)
+                pos.quantity -= sold[1]
 
     if symbols_to_remove:
         for symbol in symbols_to_remove:
+            if _positions[symbol].quantity > 0:
+                logger.warning(f"Position {symbol} partially sold — still watching {_positions[symbol].quantity} share(s)")
+                continue
             _positions.pop(symbol, None)
             logger.info(f"Position {symbol} closed and removed from active watch list")
         _save_positions()
@@ -268,14 +272,18 @@ def check_holdings_against_news(headline: str, symbol: str) -> None:
             logger.warning(f"No live price for {clean_sym} — skipping simulated protective SELL")
             return
 
-        order_id = broker.place_sell_order(
+        sold = broker.place_sell_order(
             symbol=clean_sym,
             exchange=EXCHANGE,
             quantity=held_qty,
             reason=f"protective sell: negative sentiment ({score:.2f})",
             price=price,
         )
-        if order_id:
+        if sold and sold[1] < held_qty:
+            tracked.quantity = held_qty - sold[1]
+            _save_positions()
+            logger.warning(f"Protective SELL of {clean_sym} partially filled — still watching {tracked.quantity} share(s)")
+        elif sold:
             _current_holdings.pop(clean_sym, None)
             remove_position(clean_sym)
     else:
